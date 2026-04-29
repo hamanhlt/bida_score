@@ -1,0 +1,8 @@
+services:
+  web:
+    build: .
+    image: bida-score-web:latest
+    container_name: bida-score-web
+    ports:
+      - "8080:80"
+    restart: unless-stopped

@@ -1,0 +1,6 @@
+# Whitelist style: exclude tất cả, chỉ allow file/folder cần thiết cho image.
+*
+
+# Cần copy vào image:
+!build/web/
+!nginx.conf
