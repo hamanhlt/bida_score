@@ -25,42 +25,31 @@ class ModeSelectionScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 72,
-                  height: 72,
+                // Hero banner — brand moment đầu phiên.
+                DecoratedBox(
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primary.withAlpha(60),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
+                        color: AppColors.primary.withAlpha(50),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
-                  child: ClipOval(
-                    child: Image.asset(
-                      'assets/logo_bida_score.png',
-                      fit: BoxFit.cover,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: AspectRatio(
+                      aspectRatio: 3 / 2,
+                      child: Image.asset(
+                        'assets/banner.jpg',
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  'Bida Score',
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    color: AppColors.textDark,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Chọn chế độ chơi để bắt đầu.',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: AppColors.textBody,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                Text('Chế độ', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 24),
+                Text('Thể thức thi đấu', style: theme.textTheme.titleLarge),
                 const SizedBox(height: 14),
                 for (final mode in GameMode.values) ...[
                   _ModeCard(

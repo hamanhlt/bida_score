@@ -114,7 +114,7 @@ void main() {
       await tester.tap(find.text('Làm mới trận'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Bida Score'), findsOneWidget);
+      expect(find.text('Thể thức thi đấu'), findsOneWidget);
       expect(
         container.read(gameControllerProvider).status,
         GameStatus.modeSelection,
