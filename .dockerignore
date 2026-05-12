@@ -1,6 +1,39 @@
-# Whitelist style: exclude tất cả, chỉ allow file/folder cần thiết cho image.
-*
+# Image chỉ cần `build/web/` + `nginx.conf`. Whitelist style (`*` + `!`) KHÔNG
+# dùng được vì `*` exclude cả `build/` → Docker không descend vào để lấy
+# `build/web/`. Dùng blacklist: exclude phần nặng / không liên quan, giữ
+# `build/web/` (và các file root cần cho `docker build`).
 
-# Cần copy vào image:
-!build/web/
-!nginx.conf
+# Flutter / Dart build artifacts không cần cho web image
+.dart_tool/
+.fvm/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+**/generated_plugin_registrant.dart
+build/app/
+build/ios/
+build/macos/
+build/windows/
+build/linux/
+build/native_assets/
+
+# Source / nền tảng không cần
+lib/
+test/
+assets/
+android/
+ios/
+linux/
+macos/
+windows/
+web/
+
+# VCS / IDE / công cụ
+.git/
+.github/
+.idea/
+.vscode/
+.claude/
+*.iml
+*.ipr
+*.iws

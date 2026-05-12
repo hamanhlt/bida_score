@@ -4,5 +4,5 @@ services:
     image: bida-score-web:latest
     container_name: bida-score-web
     ports:
-      - "8080:80"
+      - "8003:80"
     restart: unless-stopped
