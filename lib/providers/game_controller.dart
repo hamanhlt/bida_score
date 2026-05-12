@@ -106,6 +106,12 @@ class GameController extends Notifier<GameState> {
     unawaited(ref.read(playerNameHistoryProvider.notifier).addAll(names));
   }
 
+  /// Thêm người chơi giữa trận. Engine throw [ArgumentError] nếu tên rỗng/trùng
+  /// → caller (UI) bắt + hiện lỗi. State không update nếu validation fail.
+  void addPlayer(String name) {
+    state = _engine.addPlayer(state, name);
+  }
+
   void selectShooter(int index) {
     state = _engine.selectShooter(state, index);
   }
@@ -197,14 +203,22 @@ class GameController extends Notifier<GameState> {
     if (wasInProgress && state.status == GameStatus.finished) {
       final ranked = [...state.players]
         ..sort((a, b) => b.score.compareTo(a.score));
+      // Số ván "đã đấu" = ván cao nhất thực sự có ghi điểm — bỏ ván cuối
+      // trống nếu user ấn "Hết ván" rồi "Kết thúc trận" mà chưa ghi gì.
+      final maxScoredRound = state.scoreEvents.fold<int>(
+        0,
+        (m, e) => e.roundNumber > m ? e.roundNumber : m,
+      );
+      final roundsPlayed = maxScoredRound < 1 ? 1 : maxScoredRound;
       final result = MatchResult(
         finishedAt: DateTime.now(),
         modeLabel: state.gameMode?.label ?? 'Bắn đền',
-        roundsPlayed: state.roundNumber,
+        roundsPlayed: roundsPlayed,
         players: [
           for (final p in ranked)
             MatchPlayerResult(name: p.name, score: p.score),
         ],
+        events: state.scoreEvents,
       );
       ref.read(matchHistoryControllerProvider.notifier).addResult(result);
     }

@@ -44,4 +44,15 @@ abstract final class PlayerAvatarPool {
       growable: false,
     );
   }
+
+  /// Chọn 1 avatar random không nằm trong [exclude]. Nếu hết avatar khả dụng
+  /// (đã dùng hết pool) thì cho phép trùng.
+  static String pickOne(Set<String> exclude, {Random? rng}) {
+    final random = rng ?? Random();
+    final available = animals.where((a) => !exclude.contains(a)).toList();
+    if (available.isNotEmpty) {
+      return available[random.nextInt(available.length)];
+    }
+    return animals[random.nextInt(animals.length)];
+  }
 }

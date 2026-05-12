@@ -5,6 +5,7 @@ import '../models/match_result.dart';
 import '../providers/match_history_controller.dart';
 import '../theme/app_colors.dart';
 import '../widgets/table_background.dart';
+import 'match_detail_screen.dart';
 
 /// Lịch sử tất cả các trận đã kết thúc (bền qua lần mở app).
 class MatchHistoryScreen extends ConsumerWidget {
@@ -215,21 +216,11 @@ class _MatchCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Chỉ trận có lượt ghi điểm (mode Bắn đền) mới mở chi tiết được.
+    final tappable = match.events.isNotEmpty;
 
-    return Container(
+    final content = Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(10),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -269,6 +260,14 @@ class _MatchCard extends StatelessWidget {
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
+              if (tappable) ...[
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: AppColors.textSubtle,
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -281,6 +280,35 @@ class _MatchCard extends StatelessWidget {
             if (i != match.players.length - 1) const SizedBox(height: 6),
           ],
         ],
+      ),
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(10),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: tappable
+              ? () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => MatchDetailScreen(match: match),
+                    ),
+                  )
+              : null,
+          child: content,
+        ),
       ),
     );
   }

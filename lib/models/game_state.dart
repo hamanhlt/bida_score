@@ -25,8 +25,9 @@ class GameState {
 
   factory GameState.initial() => GameState();
 
-  /// Khôi phục từ snapshot. [scoreEvents] được truyền từ ngoài vì
-  /// không nằm trong snapshot (append-only log, không bị undo xoá).
+  /// Khôi phục từ snapshot. [scoreEvents] được truyền từ ngoài — caller
+  /// (engine.undo) tự cắt list về `snapshot.scoreEventCount` trước khi truyền,
+  /// để lượt ghi điểm vừa undo cũng biến mất khỏi log.
   factory GameState.fromSnapshot(
     GameSnapshot snapshot, {
     List<GameSnapshot> history = const [],
@@ -52,7 +53,8 @@ class GameState {
   final TurnState turnState;
   final List<GameSnapshot> history;
 
-  /// Lịch sử các lượt ghi điểm — append-only, không mất khi undo.
+  /// Lịch sử các lượt ghi điểm. Undo 1 lượt ghi điểm → lượt đó bị gỡ khỏi
+  /// list này (xem [GameEngine.undo]).
   final List<ScoreEvent> scoreEvents;
 
   final GameStatus status;
@@ -79,6 +81,7 @@ class GameState {
       roundNumber: roundNumber,
       lastScorerIndex: lastScorerIndex,
       lastVictimIndex: lastVictimIndex,
+      scoreEventCount: scoreEvents.length,
     );
   }
 

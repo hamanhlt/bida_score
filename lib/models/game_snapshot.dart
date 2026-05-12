@@ -13,6 +13,7 @@ class GameSnapshot {
     this.roundNumber = 1,
     this.lastScorerIndex,
     this.lastVictimIndex,
+    this.scoreEventCount = 0,
   }) : players = List.unmodifiable(players),
        ballConfigs = List.unmodifiable(ballConfigs);
 
@@ -23,4 +24,9 @@ class GameSnapshot {
   final int roundNumber;
   final int? lastScorerIndex;
   final int? lastVictimIndex;
+
+  /// Số lượng [ScoreEvent] tại thời điểm chụp snapshot. Khi undo, `scoreEvents`
+  /// được cắt về con số này → lượt ghi điểm vừa bị undo cũng biến mất khỏi log
+  /// lịch sử (không còn append-only).
+  final int scoreEventCount;
 }

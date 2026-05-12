@@ -97,8 +97,21 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     ),
                   );
                   return;
-                case _GameMenuAction.finish:
-                  controller.finishGame();
+                case _GameMenuAction.addPlayer:
+                  final name = await showDialog<String>(
+                    context: context,
+                    builder: (_) => const _AddPlayerDialog(),
+                  );
+                  if (name == null) return;
+                  try {
+                    controller.addPlayer(name);
+                  } on ArgumentError catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(e.message.toString())),
+                      );
+                    }
+                  }
                   return;
                 case _GameMenuAction.reset:
                   final shouldReset = await _showResetDialog(context);
@@ -114,8 +127,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                 child: Text('Lịch sử'),
               ),
               PopupMenuItem(
-                value: _GameMenuAction.finish,
-                child: Text('Kết thúc trận'),
+                value: _GameMenuAction.addPlayer,
+                child: Text('Thêm người chơi'),
               ),
               PopupMenuItem(
                 value: _GameMenuAction.reset,
@@ -173,6 +186,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                 );
                 if (confirmed == true) {
                   controller.endRound();
+                }
+              },
+              onFinishGame: () async {
+                final confirmed = await _showFinishGameDialog(context);
+                if (confirmed == true) {
+                  controller.finishGame();
                 }
               },
             ),
@@ -237,9 +256,90 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       },
     );
   }
+
+  Future<bool?> _showFinishGameDialog(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Kết thúc trận?'),
+          content: const Text(
+            'Trận sẽ được chốt lại và lưu vào lịch sử. '
+            'Bạn sẽ xem bảng kết quả cuối.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Kết thúc trận'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
-enum _GameMenuAction { history, finish, reset }
+/// Dialog nhập tên người chơi thêm giữa trận. StatefulWidget để controller
+/// dispose đúng lifecycle qua [State.dispose] (tránh assertion _dependents).
+class _AddPlayerDialog extends StatefulWidget {
+  const _AddPlayerDialog();
+
+  @override
+  State<_AddPlayerDialog> createState() => _AddPlayerDialogState();
+}
+
+class _AddPlayerDialogState extends State<_AddPlayerDialog> {
+  final _controller = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _confirm() {
+    final name = _controller.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Nhập tên người chơi.');
+      return;
+    }
+    Navigator.of(context).pop(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Thêm người chơi'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        onSubmitted: (_) => _confirm(),
+        decoration: InputDecoration(
+          labelText: 'Tên người chơi mới',
+          errorText: _error,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Hủy'),
+        ),
+        FilledButton(
+          onPressed: _confirm,
+          child: const Text('Thêm'),
+        ),
+      ],
+    );
+  }
+}
+
+enum _GameMenuAction { history, addPlayer, reset }
 
 enum _TurnStep { pickShooter, pickBalls, pickVictim }
 
@@ -537,6 +637,32 @@ class _BallPicker extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         if (ballConfigs.isNotEmpty) ...[
+          // Bi đã ăn lên trên — đây là thao tác thường ngày: chạm bi → chọn
+          // người bị trừ.
+          _BallGrid(
+            ballConfigs: ballConfigs,
+            onTap: (ball) => _pickVictimForBall(context, ball),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              const Expanded(
+                  child: Divider(color: AppColors.border, thickness: 1)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  'hoặc chấm nhanh',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSubtle,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Expanded(
+                  child: Divider(color: AppColors.border, thickness: 1)),
+            ],
+          ),
+          const SizedBox(height: 14),
           _ChamCtaCard(
             title: 'Bắt 3 đui',
             subtitle: '-$sumAllBalls cho 1 người (tổng bi ×1)',
@@ -558,30 +684,6 @@ class _BallPicker extends StatelessWidget {
             subtitle: 'Mỗi người -$chamAmount, cả bàn luôn',
             icon: Icons.bolt_rounded,
             onTap: onChamPha,
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              const Expanded(
-                  child: Divider(color: AppColors.border, thickness: 1)),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text(
-                  'hoặc chọn bi đã ăn',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSubtle,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const Expanded(
-                  child: Divider(color: AppColors.border, thickness: 1)),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _BallGrid(
-            ballConfigs: ballConfigs,
-            onTap: (ball) => _pickVictimForBall(context, ball),
           ),
         ] else
           Text(
@@ -1378,6 +1480,7 @@ class _BallGrid extends StatelessWidget {
       children: [
         for (final ball in ballConfigs)
           BallActionButton(
+            key: ValueKey('ball_${ball.number}'),
             ball: ball,
             size: 96,
             onPressed: () => onTap(ball),
@@ -1536,6 +1639,7 @@ class _BottomActionBar extends StatelessWidget {
     required this.onClear,
     required this.onUndo,
     required this.onEndRound,
+    required this.onFinishGame,
   });
 
   final TurnState turn;
@@ -1543,6 +1647,7 @@ class _BottomActionBar extends StatelessWidget {
   final VoidCallback onClear;
   final VoidCallback onUndo;
   final VoidCallback onEndRound;
+  final VoidCallback onFinishGame;
 
   @override
   Widget build(BuildContext context) {
@@ -1550,7 +1655,7 @@ class _BottomActionBar extends StatelessWidget {
         turn.shooterIndex != null || turn.pocketedBalls.isNotEmpty;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
       decoration: BoxDecoration(
         color: Colors.white,
         border: const Border(top: BorderSide(color: AppColors.border)),
@@ -1583,6 +1688,13 @@ class _BottomActionBar extends StatelessWidget {
               icon: Icons.sports_rounded,
               label: 'Hết ván',
               onPressed: onEndRound,
+            ),
+          ),
+          Expanded(
+            child: _BottomAction(
+              icon: Icons.flag_rounded,
+              label: 'Kết thúc trận',
+              onPressed: onFinishGame,
             ),
           ),
         ],
@@ -1619,6 +1731,9 @@ class _BottomAction extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: color,
                 fontWeight: FontWeight.w700,

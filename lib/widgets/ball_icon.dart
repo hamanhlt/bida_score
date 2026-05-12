@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// Render bi billiards thuần (không tap, không hiển thị +điểm) — dùng cho icon
-/// trên mode card / header. Logic màu + sọc trùng `BallActionButton` để 1 con
-/// số 10 trông y hệt ở mọi nơi.
+import 'ball_assets.dart';
+
+/// Render bi billiards — ưu tiên ảnh thật trong `assets/ball/` nếu có
+/// ([hasBallImage]), không thì tự vẽ (gradient + sọc + số). Dùng cho icon
+/// mode card / header. Không tap, không hiển thị +điểm.
 class BallIcon extends StatelessWidget {
   const BallIcon({super.key, required this.number, this.size = 52});
 
@@ -42,6 +44,9 @@ class BallIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final primary = _primary;
+    final shadowColor = hasBallImage(number)
+        ? Colors.black.withAlpha(45)
+        : primary.withAlpha(60);
     return RepaintBoundary(
       child: Container(
         width: size,
@@ -50,41 +55,64 @@ class BallIcon extends StatelessWidget {
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: primary.withAlpha(60),
+              color: shadowColor,
               blurRadius: 6,
               offset: const Offset(0, 3),
             ),
           ],
         ),
         child: ClipOval(
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              if (_isStriped)
-                _StripedBody(color: primary, size: size)
-              else
-                _SolidBody(color: primary),
-              const _Gloss(),
-              Text(
-                '$number',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: size * 0.42,
-                  height: 1.0,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black.withAlpha(90),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
-                ),
+          child: hasBallImage(number)
+              // Ảnh chụp có lề quanh ball → zoom trong ClipOval để cắt bỏ lề
+              // mờ, chỉ còn lõi ball → viền sạch. Mức zoom tuỳ ảnh ([ballImageZoom]).
+              ? Transform.scale(
+                  scale: ballImageZoom(number),
+                  child: Image.asset(
+                    ballAssetPath(number),
+                    width: size,
+                    height: size,
+                    fit: BoxFit.cover,
+                    // Decode ở ~5× kích thước logic (dư cho mọi DPI + zoom)
+                    // thay vì decode full 1024px rồi downscale → sắc nét, ít RAM.
+                    cacheWidth: (size * 5).round(),
+                    filterQuality: FilterQuality.medium,
+                    // Asset lỗi / chưa load (test env) → fallback bi tự vẽ.
+                    errorBuilder: (_, _, _) => _buildDrawn(),
+                  ),
+                )
+              : _buildDrawn(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawn() {
+    final primary = _primary;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        if (_isStriped)
+          _StripedBody(color: primary, size: size)
+        else
+          _SolidBody(color: primary),
+        const _Gloss(),
+        Text(
+          '$number',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+            fontSize: size * 0.42,
+            height: 1.0,
+            shadows: [
+              Shadow(
+                color: Colors.black.withAlpha(90),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
               ),
             ],
           ),
         ),
-      ),
+      ],
     );
   }
 }

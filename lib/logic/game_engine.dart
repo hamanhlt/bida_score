@@ -51,6 +51,35 @@ class GameEngine {
     );
   }
 
+  /// Thêm 1 người chơi vào trận đang diễn ra. Điểm = 0, avatar random
+  /// không trùng. Append vào cuối list — không đụng điểm/lịch sử/ván của ai.
+  /// Throw [ArgumentError] nếu tên rỗng hoặc trùng (case-insensitive).
+  GameState addPlayer(GameState state, String rawName) {
+    if (state.status != GameStatus.inProgress) return state;
+
+    final name = rawName.trim();
+    if (name.isEmpty) {
+      throw ArgumentError('Tên người chơi không được để trống.');
+    }
+    final lower = name.toLowerCase();
+    if (state.players.any((p) => p.name.toLowerCase() == lower)) {
+      throw ArgumentError('Đã có người chơi tên này.');
+    }
+
+    final usedAvatars = {for (final p in state.players) p.avatar};
+    final newPlayer = Player(
+      id: 'player_${state.players.length + 1}_${_slug(name)}',
+      name: name,
+      score: 0,
+      avatar: PlayerAvatarPool.pickOne(usedAvatars),
+    );
+
+    return state.copyWith(
+      players: [...state.players, newPlayer],
+      history: _recordHistory(state),
+    );
+  }
+
   GameState selectShooter(GameState state, int index) {
     if (!_isPlaying(state) || !_validIndex(state, index)) {
       return state;
@@ -233,8 +262,9 @@ class GameEngine {
     return state.copyWith(status: GameStatus.finished);
   }
 
-  /// Hoàn tác action gần nhất. Lưu ý: [scoreEvents] được **giữ nguyên**
-  /// — log ghi điểm không bị xoá khi undo (để tra cứu sau này).
+  /// Hoàn tác action gần nhất. Nếu action đó là 1 lượt ghi điểm thì
+  /// [ScoreEvent] tương ứng cũng bị gỡ khỏi log — undo không để lại "rác"
+  /// trong lịch sử. (Cắt `scoreEvents` về `snapshot.scoreEventCount`.)
   GameState undo(GameState state) {
     if (state.history.isEmpty) {
       return state;
@@ -243,10 +273,15 @@ class GameEngine {
     final previousSnapshot = state.history.last;
     final remainingHistory = state.history.sublist(0, state.history.length - 1);
 
+    final keep = previousSnapshot.scoreEventCount;
+    final trimmedEvents = keep < state.scoreEvents.length
+        ? state.scoreEvents.sublist(0, keep)
+        : state.scoreEvents;
+
     return GameState.fromSnapshot(
       previousSnapshot,
       history: remainingHistory,
-      scoreEvents: state.scoreEvents,
+      scoreEvents: trimmedEvents,
       gameMode: state.gameMode,
     );
   }

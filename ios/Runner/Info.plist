@@ -66,5 +66,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>App cần truy cập thư viện ảnh để bạn chọn ảnh bìa tuỳ chỉnh.</string>
 </dict>
 </plist>

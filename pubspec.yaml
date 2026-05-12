@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^2.6.1
   shared_preferences: ^2.3.2
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:
@@ -90,6 +91,7 @@ flutter:
   assets:
     - assets/logo_bida_score.png
     - assets/banner.jpg
+    - assets/ball/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

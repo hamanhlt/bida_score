@@ -169,7 +169,7 @@ void main() {
       expect(state.turnState.pocketedBalls, isEmpty);
     });
 
-    test('undo restores scores but preserves scoreEvents log', () {
+    test('undo restores scores and removes the scoreEvent from the log', () {
       var state = engine.startGame(['A', 'B', 'C'], defaultBalls);
       state = engine.selectShooter(state, 0);
       state = engine.addBall(state, ball6);
@@ -178,9 +178,23 @@ void main() {
       expect(state.scoreEvents, hasLength(1));
 
       state = engine.undo(state);
-      // Điểm đã lùi
+      // Điểm đã lùi.
       expect(state.players.every((p) => p.score == 0), isTrue);
-      // Nhưng log lịch sử vẫn còn — để tra cứu sự cố bấm nhầm.
+      // Lượt ghi điểm bị undo cũng biến mất khỏi log — không để lại "rác".
+      expect(state.scoreEvents, isEmpty);
+    });
+
+    test('undo a non-scoring action keeps earlier scoreEvents intact', () {
+      var state = engine.startGame(['A', 'B', 'C'], defaultBalls);
+      state = engine.selectShooter(state, 0);
+      state = engine.addBall(state, ball6);
+      state = engine.applyScore(state, victimIndices: [1]);
+      expect(state.scoreEvents, hasLength(1));
+
+      // Hành động không-ghi-điểm tiếp theo.
+      state = engine.selectShooter(state, 1);
+      // Undo cái selectShooter này → scoreEvents giữ nguyên 1.
+      state = engine.undo(state);
       expect(state.scoreEvents, hasLength(1));
     });
 

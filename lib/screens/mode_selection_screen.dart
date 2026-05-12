@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/game_mode.dart';
+import '../providers/cover_image_controller.dart';
 import '../providers/game_controller.dart';
 import '../providers/match_history_controller.dart';
 import '../theme/app_colors.dart';
@@ -15,6 +17,7 @@ class ModeSelectionScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final customCover = ref.watch(coverImageProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -25,25 +28,34 @@ class ModeSelectionScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Hero banner — brand moment đầu phiên.
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withAlpha(50),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
-                    child: AspectRatio(
-                      aspectRatio: 3 / 2,
-                      child: Image.asset(
-                        'assets/banner.jpg',
-                        fit: BoxFit.cover,
+                // Hero banner — brand moment đầu phiên. Nhấn giữ để đổi ảnh.
+                GestureDetector(
+                  onLongPress: () => _showCoverSheet(context, ref),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withAlpha(50),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: AspectRatio(
+                        aspectRatio: 3 / 2,
+                        child: customCover != null
+                            ? Image.memory(
+                                customCover,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                              )
+                            : Image.asset(
+                                'assets/banner.jpg',
+                                fit: BoxFit.cover,
+                              ),
                       ),
                     ),
                   ),
@@ -78,6 +90,47 @@ class ModeSelectionScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Bottom sheet đổi ảnh bìa: chọn ảnh từ thư viện, hoặc khôi phục mặc định.
+  Future<void> _showCoverSheet(BuildContext context, WidgetRef ref) async {
+    final hasCustom = ref.read(coverImageProvider) != null;
+    final notifier = ref.read(coverImageProvider.notifier);
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Chọn ảnh bìa từ thư viện'),
+              onTap: () => Navigator.of(sheetCtx).pop('pick'),
+            ),
+            if (hasCustom)
+              ListTile(
+                leading: const Icon(Icons.restore_rounded),
+                title: const Text('Khôi phục ảnh mặc định'),
+                onTap: () => Navigator.of(sheetCtx).pop('reset'),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    if (action == 'pick') {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1280,
+        imageQuality: 80,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      notifier.set(bytes);
+    } else if (action == 'reset') {
+      notifier.clearCustom();
+    }
   }
 }
 

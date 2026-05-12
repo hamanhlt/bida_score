@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/ball_config.dart';
+import 'ball_assets.dart';
 
 class BallActionButton extends StatefulWidget {
   const BallActionButton({
@@ -94,6 +95,7 @@ class _BallActionButtonState extends State<BallActionButton>
     final primary = _primaryColor;
     final striped = _isStriped;
     final size = widget.size;
+    final useImage = hasBallImage(widget.ball.number);
 
     // RepaintBoundary: mỗi bi cache vào layer riêng.
     return RepaintBoundary(
@@ -114,7 +116,9 @@ class _BallActionButtonState extends State<BallActionButton>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: primary.withAlpha(60),
+                    color: useImage
+                        ? Colors.black.withAlpha(55)
+                        : primary.withAlpha(60),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -124,23 +128,89 @@ class _BallActionButtonState extends State<BallActionButton>
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    if (striped)
-                      _StripedBody(color: primary, size: size)
-                    else
-                      _SolidBody(color: primary),
-                    const _Gloss(),
+                    if (useImage)
+                      // Ảnh chụp có lề quanh ball → zoom trong ClipOval để cắt
+                      // bỏ lề mờ, chỉ còn lõi ball. Mức zoom tuỳ ảnh.
+                      Transform.scale(
+                        scale: ballImageZoom(widget.ball.number),
+                        child: Image.asset(
+                          ballAssetPath(widget.ball.number),
+                          width: size,
+                          height: size,
+                          fit: BoxFit.cover,
+                          // Decode ~5× kích thước logic (dư cho mọi DPI + zoom)
+                          // thay vì decode full 1024px rồi downscale → sắc nét.
+                          cacheWidth: (size * 5).round(),
+                          filterQuality: FilterQuality.medium,
+                          // Asset lỗi / chưa load (test env) → fallback bi vẽ.
+                          errorBuilder: (_, _, _) => striped
+                              ? _StripedBody(color: primary, size: size)
+                              : _SolidBody(color: primary),
+                        ),
+                      )
+                    else ...[
+                      if (striped)
+                        _StripedBody(color: primary, size: size)
+                      else
+                        _SolidBody(color: primary),
+                      const _Gloss(),
+                    ],
                     IgnorePointer(
-                      child: _NumberLabel(
-                        number: widget.ball.number,
-                        points: widget.ball.points,
-                        size: size,
-                      ),
+                      // Ảnh thật đã có số bi sẵn → chỉ overlay "+điểm" ở đáy.
+                      // Bi tự vẽ → hiện cả số + "+điểm" ở giữa.
+                      child: useImage
+                          ? Align(
+                              alignment: Alignment.bottomCenter,
+                              child: Padding(
+                                padding: EdgeInsets.only(bottom: size * 0.06),
+                                child: _PointsPill(
+                                  points: widget.ball.points,
+                                  size: size,
+                                ),
+                              ),
+                            )
+                          : _NumberLabel(
+                              number: widget.ball.number,
+                              points: widget.ball.points,
+                              size: size,
+                            ),
                     ),
                   ],
                 ),
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pill "+điểm" nhỏ, nền tối — overlay ở đáy ảnh bi thật (ảnh đã có số bi).
+class _PointsPill extends StatelessWidget {
+  const _PointsPill({required this.points, required this.size});
+
+  final int points;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: size * 0.1,
+        vertical: size * 0.02,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.black.withAlpha(150),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '+$points',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w900,
+          fontSize: size * 0.17,
+          height: 1.0,
         ),
       ),
     );

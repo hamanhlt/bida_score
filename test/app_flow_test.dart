@@ -1,7 +1,6 @@
 import 'package:bida_score/app.dart';
 import 'package:bida_score/models/game_snapshot.dart';
 import 'package:bida_score/providers/game_controller.dart';
-import 'package:bida_score/widgets/ball_action_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,7 +39,7 @@ void main() {
 
         await _tapVisible(
           tester,
-          find.widgetWithText(BallActionButton, '3'),
+          find.byKey(const ValueKey('ball_3')),
         );
         await tester.pumpAndSettle();
 
@@ -77,7 +76,7 @@ void main() {
       await tester.pumpAndSettle();
       await _tapVisible(
         tester,
-        find.widgetWithText(BallActionButton, '9'),
+        find.byKey(const ValueKey('ball_9')),
       );
       await tester.pumpAndSettle();
       // Popup victim picker — tap player index 1.
@@ -87,7 +86,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.more_vert));
+      // Nút "Kết thúc trận" ở bottom bar → confirm dialog → xác nhận.
+      await _tapVisible(tester, find.text('Kết thúc trận'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Kết thúc trận').last);
       await tester.pumpAndSettle();
