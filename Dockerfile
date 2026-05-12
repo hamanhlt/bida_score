@@ -10,7 +10,9 @@ RUN git config --global --add safe.directory /sdks/flutter
 WORKDIR /app
 
 # Cache layer pub get: chỉ copy pubspec trước, get deps, rồi mới copy source.
-COPY pubspec.yaml pubspec.lock ./
+# `pubspec.lock*` (glob) → optional: repo này gitignore *.lock nên server có
+# thể không có. Có lock → build reproducible; không → flutter pub get tự sinh.
+COPY pubspec.yaml pubspec.lock* ./
 RUN flutter pub get
 
 # Copy phần source còn lại (lib/, web/, assets/, ...) — xem .dockerignore.
