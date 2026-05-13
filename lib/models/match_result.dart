@@ -1,11 +1,13 @@
 import 'score_event.dart';
 
 /// Kết quả cuối cùng của 1 trận đấu — lưu vào lịch sử khi user bấm
-/// "Kết thúc trận".
+/// "Kết thúc trận" (hoặc trận race-to-X tự kết thúc khi đạt race target).
 ///
-/// [events] = toàn bộ lượt ghi điểm trong trận → cho phép tra cứu lại chi
-/// tiết từng ván/lượt y như màn "Lịch sử" trong trận. Có thể rỗng (vd mode
-/// race-to-X không dùng ScoreEvent, hoặc trận cũ lưu trước khi thêm field).
+/// Tuỳ mode, 1 trong 2 list chi tiết được điền (cái còn lại rỗng):
+/// - [events]: Bắn đền — toàn bộ lượt ghi điểm (per-ván / per-lượt).
+/// - [rackWinners]: race-to-X (9/8/10-Ball) — tên người thắng từng rack
+///   theo thứ tự → MatchDetailScreen hiện play-by-play.
+/// Cả hai rỗng = trận cũ lưu trước khi thêm field.
 class MatchResult {
   const MatchResult({
     required this.finishedAt,
@@ -13,6 +15,7 @@ class MatchResult {
     required this.roundsPlayed,
     required this.players,
     this.events = const [],
+    this.rackWinners = const [],
   });
 
   final DateTime finishedAt;
@@ -20,6 +23,7 @@ class MatchResult {
   final int roundsPlayed;
   final List<MatchPlayerResult> players;
   final List<ScoreEvent> events;
+  final List<String> rackWinners;
 
   Map<String, dynamic> toJson() => {
     'finishedAt': finishedAt.toIso8601String(),
@@ -27,6 +31,7 @@ class MatchResult {
     'roundsPlayed': roundsPlayed,
     'players': players.map((p) => p.toJson()).toList(),
     'events': events.map((e) => e.toJson()).toList(),
+    'rackWinners': rackWinners,
   };
 
   factory MatchResult.fromJson(Map<String, dynamic> json) => MatchResult(
@@ -39,6 +44,8 @@ class MatchResult {
     events: (json['events'] as List<dynamic>? ?? const [])
         .map((e) => ScoreEvent.fromJson(e as Map<String, dynamic>))
         .toList(),
+    rackWinners:
+        (json['rackWinners'] as List<dynamic>? ?? const []).cast<String>(),
   );
 }
 

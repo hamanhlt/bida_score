@@ -84,6 +84,16 @@ class ModeSelectionScreen extends ConsumerWidget {
                     );
                   },
                 ),
+                const SizedBox(height: 24),
+                Center(
+                  child: Text(
+                    '© 2026 Bản quyền thuộc về Mạnh Bóng Đêm - TCG',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSubtle,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               ],
             ),
           ),

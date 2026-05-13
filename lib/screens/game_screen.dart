@@ -178,7 +178,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
               turn: turn,
               canUndo: state.canUndo,
               onClear: controller.clearDraft,
-              onUndo: controller.undo,
+              onUndo: () async {
+                final confirmed = await _showUndoDialog(context);
+                if (confirmed == true) {
+                  controller.undo();
+                }
+              },
               onEndRound: () async {
                 final confirmed = await _showEndRoundDialog(
                   context,
@@ -207,6 +212,30 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     return _TurnStep.pickVictim;
   }
 
+  Future<bool?> _showUndoDialog(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Bạn có chắc muốn hoàn tác không?'),
+          content: const Text(
+            'Điểm và lịch sử của thao tác gần nhất sẽ được khôi phục.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Hoàn tác'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<bool?> _showEndRoundDialog(
     BuildContext context, {
     required int roundNumber,
@@ -218,7 +247,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           title: const Text('Kết thúc ván?'),
           content: Text(
             'Ván $roundNumber sẽ được đóng lại. '
-            'Điểm được giữ nguyên và thứ tự người chơi có thể đổi theo lượt ghi điểm cuối.',
+            'Điểm và thứ tự người chơi được giữ nguyên.',
           ),
           actions: [
             TextButton(

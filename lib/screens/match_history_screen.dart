@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/game_mode.dart';
 import '../models/match_result.dart';
 import '../providers/match_history_controller.dart';
 import '../theme/app_colors.dart';
 import '../widgets/table_background.dart';
 import 'match_detail_screen.dart';
 
-/// Lịch sử tất cả các trận đã kết thúc (bền qua lần mở app).
+/// Lịch sử tất cả các trận đã kết thúc (bền qua lần mở app). Có tab theo mode:
+/// "Tất cả" + 1 tab mỗi `GameMode` — ấn tab nào ra list trận của mode đó.
 class MatchHistoryScreen extends ConsumerWidget {
   const MatchHistoryScreen({super.key});
 
@@ -16,83 +18,85 @@ class MatchHistoryScreen extends ConsumerWidget {
     final historyAsync = ref.watch(matchHistoryControllerProvider);
     final theme = Theme.of(context);
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        foregroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text(
-          'Lịch sử trận đấu',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
+    return DefaultTabController(
+      length: 1 + GameMode.values.length,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          foregroundColor: Colors.white,
+          iconTheme: const IconThemeData(color: Colors.white),
+          title: const Text(
+            'Lịch sử trận đấu',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            ),
+          ),
+          actions: [
+            historyAsync.maybeWhen(
+              data: (list) => list.isEmpty
+                  ? const SizedBox.shrink()
+                  : IconButton(
+                      tooltip: 'Xoá tất cả',
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      onPressed: () async {
+                        final ok = await _confirmClear(context);
+                        if (ok == true) {
+                          await ref
+                              .read(matchHistoryControllerProvider.notifier)
+                              .clearAll();
+                        }
+                      },
+                    ),
+              orElse: () => const SizedBox.shrink(),
+            ),
+          ],
+          bottom: TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white60,
+            indicatorColor: AppColors.accent,
+            indicatorWeight: 3,
+            tabs: [
+              const Tab(text: 'Tất cả'),
+              for (final m in GameMode.values) Tab(text: m.label),
+            ],
           ),
         ),
-        actions: [
-          historyAsync.maybeWhen(
-            data: (list) => list.isEmpty
-                ? const SizedBox.shrink()
-                : IconButton(
-                    tooltip: 'Xoá tất cả',
-                    icon: const Icon(Icons.delete_outline_rounded),
-                    onPressed: () async {
-                      final ok = await _confirmClear(context);
-                      if (ok == true) {
-                        await ref
-                            .read(matchHistoryControllerProvider.notifier)
-                            .clearAll();
-                      }
-                    },
+        body: TableBackground(
+          child: SafeArea(
+            top: false,
+            child: historyAsync.when(
+              loading: () => const Center(
+                child: CircularProgressIndicator(color: AppColors.primary),
+              ),
+              error: (err, _) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'Không đọc được lịch sử: $err',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: AppColors.victim,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-            orElse: () => const SizedBox.shrink(),
-          ),
-        ],
-      ),
-      body: TableBackground(
-        child: SafeArea(
-          child: historyAsync.when(
-            loading: () => const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            ),
-            error: (err, _) => Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Không đọc được lịch sử: $err',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: AppColors.victim,
-                  ),
-                  textAlign: TextAlign.center,
                 ),
               ),
+              data: (list) => TabBarView(
+                children: [
+                  _MatchListView(matches: list),
+                  for (final m in GameMode.values)
+                    _MatchListView(
+                      matches: list
+                          .where((x) => x.modeLabel == m.label)
+                          .toList(),
+                      emptyHint: 'Chưa có trận ${m.label}.',
+                    ),
+                ],
+              ),
             ),
-            data: (list) => list.isEmpty
-                ? _EmptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                    itemCount: list.length,
-                    itemBuilder: (itemContext, i) {
-                      final match = list[i];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Dismissible(
-                          // finishedAt là DateTime unique mỗi lần addResult.
-                          key: ValueKey(match.finishedAt.toIso8601String()),
-                          direction: DismissDirection.endToStart,
-                          background: _DismissBackground(),
-                          confirmDismiss: (_) =>
-                              _confirmRemoveOne(itemContext),
-                          onDismissed: (_) {
-                            ref
-                                .read(matchHistoryControllerProvider.notifier)
-                                .removeAt(i);
-                          },
-                          child: _MatchCard(match: match),
-                        ),
-                      );
-                    },
-                  ),
           ),
         ),
       ),
@@ -105,7 +109,7 @@ class MatchHistoryScreen extends ConsumerWidget {
       builder: (_) => AlertDialog(
         title: const Text('Xoá toàn bộ lịch sử?'),
         content: const Text(
-          'Tất cả trận đã lưu sẽ bị xoá và không khôi phục được.',
+          'Tất cả trận đã lưu (mọi mode) sẽ bị xoá và không khôi phục được.',
         ),
         actions: [
           TextButton(
@@ -118,6 +122,45 @@ class MatchHistoryScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// List trận (đã lọc theo mode hoặc tất cả). Swipe-to-delete từng trận, tap để
+/// mở chi tiết (nếu có). Rỗng → hiện hint.
+class _MatchListView extends ConsumerWidget {
+  const _MatchListView({required this.matches, this.emptyHint});
+
+  final List<MatchResult> matches;
+
+  /// Text hiện khi list rỗng. Null → dùng empty-state mặc định ("Tất cả").
+  final String? emptyHint;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (matches.isEmpty) {
+      return _EmptyState(hint: emptyHint);
+    }
+    final notifier = ref.read(matchHistoryControllerProvider.notifier);
+
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+      itemCount: matches.length,
+      itemBuilder: (itemContext, i) {
+        final match = matches[i];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Dismissible(
+            // finishedAt là DateTime unique mỗi lần addResult.
+            key: ValueKey(match.finishedAt.toIso8601String()),
+            direction: DismissDirection.endToStart,
+            background: _DismissBackground(),
+            confirmDismiss: (_) => _confirmRemoveOne(itemContext),
+            onDismissed: (_) => notifier.removeMatch(match),
+            child: _MatchCard(match: match),
+          ),
+        );
+      },
     );
   }
 
@@ -171,6 +214,10 @@ class _DismissBackground extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
+  const _EmptyState({this.hint});
+
+  final String? hint;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -188,10 +235,11 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Chưa có trận nào được lưu',
+              hint ?? 'Chưa có trận nào được lưu',
               style: theme.textTheme.titleMedium?.copyWith(
                 color: AppColors.textBody,
               ),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
             Text(
@@ -216,8 +264,8 @@ class _MatchCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Chỉ trận có lượt ghi điểm (mode Bắn đền) mới mở chi tiết được.
-    final tappable = match.events.isNotEmpty;
+    // Có chi tiết (Bắn đền: lượt ghi điểm; race-to-X: winner từng rack) → tap mở.
+    final tappable = match.events.isNotEmpty || match.rackWinners.isNotEmpty;
 
     final content = Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),

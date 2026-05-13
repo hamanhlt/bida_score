@@ -45,11 +45,14 @@ class MatchHistoryController extends AsyncNotifier<List<MatchResult>> {
     await prefs.remove(_storageKey);
   }
 
-  /// Xoá 1 trận tại vị trí [index] (chỉ số trong list mới-nhất-trước).
-  Future<void> removeAt(int index) async {
+  /// Xoá 1 trận theo identity ([MatchResult.finishedAt] là DateTime unique mỗi
+  /// lần `addResult`). Dùng identity thay vì index vì màn lịch sử có thể đang
+  /// lọc theo mode → index trong list lọc ≠ index trong list gốc.
+  Future<void> removeMatch(MatchResult match) async {
     final current = state.valueOrNull ?? const <MatchResult>[];
-    if (index < 0 || index >= current.length) return;
-    final updated = [...current]..removeAt(index);
+    final updated =
+        current.where((m) => m.finishedAt != match.finishedAt).toList();
+    if (updated.length == current.length) return;
     state = AsyncData(updated);
     await _persist(updated);
   }

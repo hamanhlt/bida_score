@@ -160,10 +160,13 @@ class GameEngine {
   /// Shooter được cộng `totalBi × multiplier × số_victim` (bảo toàn zero-sum).
   ///
   /// Ghi [ScoreEvent] vào log (append-only, undo không xoá), và reset draft.
+  /// [undoState] cho phép các shortcut ghi điểm lưu snapshot trước shortcut,
+  /// thay vì snapshot trung gian đã nhét bi vào draft.
   GameState applyScore(
     GameState state, {
     required List<int> victimIndices,
     int multiplier = 1,
+    GameState? undoState,
   }) {
     if (!_isPlaying(state)) return state;
 
@@ -204,14 +207,14 @@ class GameEngine {
       pointsPerVictim: pointsPerVictim,
     );
 
-    // Chỉ set lastVictimIndex khi đúng 1 victim — để endRound reorder chính xác.
+    // Chỉ set lastVictimIndex khi đúng 1 victim — giữ dấu lượt cuối cho snapshot/undo.
     final int? singleVictim =
         victimIndices.length == 1 ? victimIndices.first : null;
 
     final nextState = state.copyWith(
       players: updatedPlayers,
       turnState: TurnState(),
-      history: _recordHistory(state),
+      history: _recordHistory(undoState ?? state),
       scoreEvents: [...state.scoreEvents, event],
       lastScorerIndex: () => shooterIndex,
       lastVictimIndex: () => singleVictim,
@@ -220,32 +223,14 @@ class GameEngine {
     return _ensureZeroBalance(nextState);
   }
 
-  /// Kết thúc ván hiện tại, bắt đầu ván mới.
+  /// Kết thúc ván hiện tại, bắt đầu ván mới. Thứ tự người chơi được giữ nguyên
+  /// để màn ghi điểm không bị nhảy vị trí sau mỗi ván.
   GameState endRound(GameState state) {
     if (!_isPlaying(state) || state.players.isEmpty) {
       return state;
     }
 
-    var players = [...state.players];
-
-    if (state.lastScorerIndex != null && state.lastVictimIndex != null) {
-      final scorerIdx = state.lastScorerIndex!;
-      final victimIdx = state.lastVictimIndex!;
-      final scorer = players[scorerIdx];
-      final victim = players[victimIdx];
-
-      final remaining = <Player>[];
-      for (var i = 0; i < players.length; i++) {
-        if (i != scorerIdx && i != victimIdx) {
-          remaining.add(players[i]);
-        }
-      }
-
-      players = [scorer, victim, ...remaining];
-    }
-
     return state.copyWith(
-      players: players,
       turnState: TurnState(),
       roundNumber: state.roundNumber + 1,
       lastScorerIndex: () => null,

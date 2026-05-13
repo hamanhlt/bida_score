@@ -156,6 +156,7 @@ class GameController extends Notifier<GameState> {
   /// áp ngay cho danh sách `victimIndices`. Dùng cho flow popup ở Bước 2
   /// (tap 1 bi → popup chọn victim, hoặc Chấm đơn → popup chọn victim).
   /// Engine tự validate và ghi 1 entry `ScoreEvent` cùng 1 snapshot undo.
+  /// Undo quay về bước chọn bi, không quay về draft trung gian có nút "Đền cả bàn".
   void applyBallsToVictims({
     required List<BallConfig> balls,
     required List<int> victimIndices,
@@ -172,11 +173,13 @@ class GameController extends Notifier<GameState> {
       enriched,
       victimIndices: victimIndices,
       multiplier: multiplier,
+      undoState: state,
     );
   }
 
   /// Chấm phá: fill tất cả bi + bật chấm ×2 + áp ngay cho tất cả người không-bắn.
   void chamPha() {
+    final beforeShortcut = state;
     final afterEnter = _engine.enterCham(state);
     final shooter = afterEnter.turnState.shooterIndex;
     if (shooter == null) return;
@@ -188,6 +191,7 @@ class GameController extends Notifier<GameState> {
       afterEnter,
       victimIndices: victims,
       multiplier: afterEnter.turnState.multiplier,
+      undoState: beforeShortcut,
     );
   }
 

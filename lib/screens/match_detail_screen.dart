@@ -71,23 +71,34 @@ class MatchDetailScreen extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: match.events.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Text(
-                            'Trận này không lưu chi tiết từng lượt.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: AppColors.textSubtle,
-                            ),
-                            textAlign: TextAlign.center,
+                child: switch ((
+                  match.events.isNotEmpty,
+                  match.rackWinners.isNotEmpty,
+                )) {
+                  // Bắn đền — cây ván/lượt.
+                  (true, _) => RoundHistoryView(
+                      events: match.events,
+                      totalRounds: match.roundsPlayed,
+                    ),
+                  // race-to-X — play-by-play từng rack.
+                  (false, true) => _RackPlayByPlay(
+                      rackWinners: match.rackWinners,
+                      playerNames: [for (final p in match.players) p.name],
+                    ),
+                  // Trận cũ không lưu chi tiết.
+                  (false, false) => Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text(
+                          'Trận này không lưu chi tiết từng lượt.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: AppColors.textSubtle,
                           ),
+                          textAlign: TextAlign.center,
                         ),
-                      )
-                    : RoundHistoryView(
-                        events: match.events,
-                        totalRounds: match.roundsPlayed,
                       ),
+                    ),
+                },
               ),
             ],
           ),
@@ -100,6 +111,138 @@ class MatchDetailScreen extends StatelessWidget {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(at.day)}/${two(at.month)}/${at.year} '
         '${two(at.hour)}:${two(at.minute)}';
+  }
+}
+
+/// Play-by-play từng rack cho mode race-to-X (9/8/10-Ball). Mới nhất ở trên,
+/// mỗi dòng: "Rack N · [người thắng] thắng" + tỉ số chạy tới rack đó.
+class _RackPlayByPlay extends StatelessWidget {
+  const _RackPlayByPlay({
+    required this.rackWinners,
+    required this.playerNames,
+  });
+
+  /// Tên người thắng từng rack, theo thứ tự (rack 1 = phần tử 0).
+  final List<String> rackWinners;
+
+  /// Tên 2 người chơi — `[0]` là người thắng trận (theo thứ tự ranked).
+  final List<String> playerNames;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rackWinners.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final nameA = playerNames.isNotEmpty ? playerNames[0] : '';
+    final nameB = playerNames.length > 1 ? playerNames[1] : '';
+
+    final total = rackWinners.length;
+    // Hiển thị mới nhất (rack cao nhất) ở trên.
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      itemCount: total,
+      itemBuilder: (context, idx) {
+        final rackNumber = total - idx; // idx 0 → rack cuối cùng
+        final winner = rackWinners[rackNumber - 1];
+        // Tỉ số chạy tính tới hết rack này (gồm cả rack hiện tại).
+        var a = 0;
+        var b = 0;
+        for (var k = 0; k < rackNumber; k++) {
+          if (rackWinners[k] == nameA) a++;
+          if (rackWinners[k] == nameB) b++;
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _RackRow(
+            rackNumber: rackNumber,
+            winner: winner,
+            scoreA: a,
+            scoreB: b,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RackRow extends StatelessWidget {
+  const _RackRow({
+    required this.rackNumber,
+    required this.winner,
+    required this.scoreA,
+    required this.scoreB,
+  });
+
+  final int rackNumber;
+  final String winner;
+  final int scoreA;
+  final int scoreB;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.primaryDark,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              'Rack $rackNumber',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: AppColors.primaryDark,
+                ),
+                children: [
+                  TextSpan(
+                    text: winner,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const TextSpan(text: ' thắng'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.accent.withAlpha(40),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.accent.withAlpha(120)),
+            ),
+            child: Text(
+              '$scoreA – $scoreB',
+              style: const TextStyle(
+                color: AppColors.primaryDark,
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

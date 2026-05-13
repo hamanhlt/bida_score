@@ -184,6 +184,28 @@ void main() {
       expect(state.scoreEvents, isEmpty);
     });
 
+    test('undo can restore explicit pre-shortcut state', () {
+      var state = engine.startGame(['A', 'B', 'C'], defaultBalls);
+      state = engine.selectShooter(state, 0);
+      final beforeShortcut = state;
+      final enriched = state.copyWith(
+        turnState: state.turnState.copyWith(pocketedBalls: [ball6]),
+      );
+
+      state = engine.applyScore(
+        enriched,
+        victimIndices: [1],
+        undoState: beforeShortcut,
+      );
+      expect(state.players[0].score, 2);
+
+      state = engine.undo(state);
+      expect(state.players.every((p) => p.score == 0), isTrue);
+      expect(state.turnState.shooterIndex, 0);
+      expect(state.turnState.pocketedBalls, isEmpty);
+      expect(state.scoreEvents, isEmpty);
+    });
+
     test('undo a non-scoring action keeps earlier scoreEvents intact', () {
       var state = engine.startGame(['A', 'B', 'C'], defaultBalls);
       state = engine.selectShooter(state, 0);
@@ -198,7 +220,7 @@ void main() {
       expect(state.scoreEvents, hasLength(1));
     });
 
-    test('endRound reorders based on last single-victim scoring', () {
+    test('endRound keeps player order after single-victim scoring', () {
       var state = engine.startGame(['A', 'B', 'C'], defaultBalls);
       state = engine.selectShooter(state, 1);
       state = engine.addBall(state, ball9);
@@ -209,12 +231,12 @@ void main() {
 
       state = engine.endRound(state);
       expect(state.roundNumber, 2);
-      expect(state.players[0].name, 'B');
-      expect(state.players[1].name, 'A');
+      expect(state.players[0].name, 'A');
+      expect(state.players[1].name, 'B');
       expect(state.players[2].name, 'C');
     });
 
-    test('endRound does NOT reorder when last scoring was multi-victim', () {
+    test('endRound keeps player order after multi-victim scoring', () {
       var state = engine.startGame(['A', 'B', 'C'], defaultBalls);
       state = engine.selectShooter(state, 0);
       state = engine.addBall(state, ball3);

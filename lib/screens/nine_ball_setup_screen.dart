@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/game_controller.dart';
 import '../providers/nine_ball_controller.dart';
+import '../widgets/name_history_button.dart';
 import '../widgets/table_background.dart';
 
 class NineBallSetupScreen extends ConsumerStatefulWidget {
@@ -35,6 +36,15 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
       c.dispose();
     }
     super.dispose();
+  }
+
+  /// Tên đang dùng ở field KHÁC [excludeIndex] (lowercase, bỏ rỗng) — để
+  /// popup gợi ý ẩn tên đã chọn, tránh trùng.
+  Set<String> _otherSelectedNames(int excludeIndex) {
+    return {
+      for (var j = 0; j < _controllers.length; j++)
+        if (j != excludeIndex) _controllers[j].text.trim().toLowerCase(),
+    }..removeWhere((n) => n.isEmpty);
   }
 
   Future<void> _showCustomRaceDialog() async {
@@ -134,6 +144,19 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
                             },
                             decoration: InputDecoration(
                               labelText: 'Người chơi ${i + 1}',
+                              suffixIcon: NameHistoryButton(
+                                excluded: _otherSelectedNames(i),
+                                onPick: (name) {
+                                  _controllers[i].text = name;
+                                  _controllers[i].selection =
+                                      TextSelection.collapsed(
+                                    offset: name.length,
+                                  );
+                                  if (_errorText != null) {
+                                    setState(() => _errorText = null);
+                                  }
+                                },
+                              ),
                             ),
                           ),
                           if (i == 0) const SizedBox(height: 12),

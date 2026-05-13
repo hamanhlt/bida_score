@@ -59,6 +59,21 @@ void main() {
         expect(state.turnState.pocketedBalls, isEmpty);
         // ScoreEvent logged.
         expect(state.scoreEvents, hasLength(1));
+
+        await _tapVisible(tester, find.text('Hoàn tác'));
+        await tester.pumpAndSettle();
+        expect(find.text('Bạn có chắc muốn hoàn tác không?'), findsOneWidget);
+
+        await tester.tap(find.text('Hoàn tác').last);
+        await tester.pumpAndSettle();
+
+        final undone = container.read(gameControllerProvider);
+        expect(undone.players.every((p) => p.score == 0), isTrue);
+        expect(undone.turnState.shooterIndex, 0);
+        expect(undone.turnState.pocketedBalls, isEmpty);
+        expect(undone.scoreEvents, isEmpty);
+        expect(find.text('Ăn bi nào?'), findsOneWidget);
+        expect(find.text('Đền cả bàn'), findsNothing);
       },
     );
 

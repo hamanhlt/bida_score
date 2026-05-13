@@ -56,6 +56,10 @@ class NineBallEngine {
       rackWins: newWins,
       breakerIndex: winnerIndex,
       currentRack: state.currentRack + 1,
+      rackWinnerNames: [
+        ...state.rackWinnerNames,
+        state.players[winnerIndex].name,
+      ],
       history: _recordHistory(state),
     );
 
@@ -88,10 +92,16 @@ class NineBallEngine {
       status = NineBallStatus.inProgress;
     }
 
+    // Gỡ rack thắng gần nhất của người này khỏi log play-by-play.
+    final newWinnerNames = [...state.rackWinnerNames];
+    final removeAt = newWinnerNames.lastIndexOf(state.players[playerIndex].name);
+    if (removeAt >= 0) newWinnerNames.removeAt(removeAt);
+
     return state.copyWith(
       players: newPlayers,
       rackWins: newWins,
       status: status,
+      rackWinnerNames: newWinnerNames,
       history: _recordHistory(state),
     );
   }
