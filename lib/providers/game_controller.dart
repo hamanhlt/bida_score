@@ -9,6 +9,7 @@ import '../models/game_snapshot.dart';
 import '../models/game_state.dart';
 import '../models/last_setup.dart';
 import '../models/match_result.dart';
+import '../services/ball_config_history_storage.dart';
 import '../services/game_persistence.dart';
 import '../services/player_name_history_storage.dart';
 import '../services/setup_persistence.dart';
@@ -72,6 +73,34 @@ class PlayerNameHistoryNotifier extends Notifier<List<String>> {
   }
 }
 
+/// Seed cho [ballConfigHistoryProvider] — override ở `main.dart`.
+final ballConfigHistorySeedProvider =
+    Provider<List<BallConfig>>((_) => const []);
+
+/// Lịch sử các cấu hình bi (số bi + điểm) đã từng nhập (LRU, mới nhất đầu).
+/// Setup screen gợi ý popup ở mỗi row "Danh sách bi" → user khỏi gõ lại.
+final ballConfigHistoryProvider =
+    NotifierProvider<BallConfigHistoryNotifier, List<BallConfig>>(
+  BallConfigHistoryNotifier.new,
+);
+
+class BallConfigHistoryNotifier extends Notifier<List<BallConfig>> {
+  @override
+  List<BallConfig> build() => ref.read(ballConfigHistorySeedProvider);
+
+  /// Thêm `configs` vào đầu list (dedupe — `BallConfig.==` override, cap 20).
+  Future<void> addAll(List<BallConfig> configs) async {
+    final updated = await BallConfigHistoryStorage.addAll(state, configs);
+    state = updated;
+  }
+
+  /// Xoá 1 cấu hình bi khỏi list + ghi disk.
+  Future<void> remove(BallConfig config) async {
+    final updated = await BallConfigHistoryStorage.remove(state, config);
+    state = updated;
+  }
+}
+
 final gameControllerProvider = NotifierProvider<GameController, GameState>(
   GameController.new,
 );
@@ -102,8 +131,11 @@ class GameController extends Notifier<GameState> {
     ref.read(lastSetupProvider.notifier).set(
       LastSetup(playerNames: names, ballConfigs: ballConfigs),
     );
-    // Lưu tên vào history pool — Setup screen lần sau gợi ý lại được.
+    // Lưu tên + cấu hình bi vào history pool — Setup screen lần sau gợi ý lại.
     unawaited(ref.read(playerNameHistoryProvider.notifier).addAll(names));
+    unawaited(
+      ref.read(ballConfigHistoryProvider.notifier).addAll(ballConfigs),
+    );
   }
 
   /// Thêm người chơi giữa trận. Engine throw [ArgumentError] nếu tên rỗng/trùng

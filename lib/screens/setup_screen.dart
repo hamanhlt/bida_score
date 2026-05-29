@@ -395,7 +395,7 @@ class _BallDraft {
 }
 
 
-class _BallConfigRow extends StatelessWidget {
+class _BallConfigRow extends ConsumerWidget {
   const _BallConfigRow({
     super.key,
     required this.draft,
@@ -412,7 +412,29 @@ class _BallConfigRow extends StatelessWidget {
   final VoidCallback onChanged;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Lấy distinct (giữ thứ tự mới-nhất-trước) cho mỗi field — chọn riêng số bi
+    // và riêng điểm thay vì cụm pair.
+    final history = ref.watch(ballConfigHistoryProvider);
+    final numbers = history.map((c) => c.number).toSet().toList();
+    final points = history.map((c) => c.points).toSet().toList();
+
+    void setNumber(int n) {
+      draft.numberController.text = '$n';
+      draft.numberController.selection = TextSelection.collapsed(
+        offset: draft.numberController.text.length,
+      );
+      onChanged();
+    }
+
+    void setPoints(int p) {
+      draft.pointsController.text = '$p';
+      draft.pointsController.selection = TextSelection.collapsed(
+        offset: draft.pointsController.text.length,
+      );
+      onChanged();
+    }
+
     return Row(
       children: [
         Expanded(
@@ -424,6 +446,11 @@ class _BallConfigRow extends StatelessWidget {
             decoration: InputDecoration(
               labelText: 'Số bi #${index + 1}',
               hintText: 'VD: 3',
+              suffixIcon: _IntHistoryButton(
+                values: numbers,
+                tooltip: 'Số bi đã dùng',
+                onPick: setNumber,
+              ),
             ),
           ),
         ),
@@ -434,9 +461,14 @@ class _BallConfigRow extends StatelessWidget {
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             onChanged: (_) => onChanged(),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Điểm',
               hintText: 'VD: 1',
+              suffixIcon: _IntHistoryButton(
+                values: points,
+                tooltip: 'Điểm đã dùng',
+                onPick: setPoints,
+              ),
             ),
           ),
         ),
@@ -446,6 +478,34 @@ class _BallConfigRow extends StatelessWidget {
           tooltip: 'Xóa bi',
           icon: const Icon(Icons.remove_rounded),
         ),
+      ],
+    );
+  }
+}
+
+/// Popup các giá trị int đã dùng — gợi ý cho field số bi hoặc field điểm
+/// riêng biệt (không cụm pair). Ẩn nếu chưa có lịch sử.
+class _IntHistoryButton extends StatelessWidget {
+  const _IntHistoryButton({
+    required this.values,
+    required this.onPick,
+    required this.tooltip,
+  });
+
+  final List<int> values;
+  final ValueChanged<int> onPick;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    if (values.isEmpty) return const SizedBox.shrink();
+    return PopupMenuButton<int>(
+      tooltip: tooltip,
+      icon: const Icon(Icons.history_rounded, color: AppColors.textSubtle),
+      onSelected: onPick,
+      itemBuilder: (_) => [
+        for (final v in values)
+          PopupMenuItem<int>(value: v, child: Text('$v')),
       ],
     );
   }

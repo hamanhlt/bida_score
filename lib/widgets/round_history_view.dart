@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/score_event.dart';
 import '../theme/app_colors.dart';
+import 'ball_icon.dart';
 
 /// Cây lịch sử ghi điểm — hiển thị tất cả ván `1..totalRounds` (kể cả ván
 /// trống không có lượt ghi điểm), mỗi ván xổ ra danh sách lượt.
@@ -321,59 +322,37 @@ class _EventCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
+          // Flow: shooter → balls → victims (wrap nếu hẹp).
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _PlayerTag(
                 name: event.shooterName,
                 color: AppColors.shooter,
                 delta: '+${event.shooterGain}',
               ),
-              const SizedBox(width: 8),
-              const Icon(Icons.arrow_forward_rounded,
-                  size: 18, color: AppColors.textSubtle),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final victim in event.victimNames)
-                      _PlayerTag(
-                        name: victim,
-                        color: AppColors.victim,
-                        delta: '-${event.pointsPerVictim}',
-                      ),
-                  ],
-                ),
+              const Icon(
+                Icons.arrow_forward_rounded,
+                size: 18,
+                color: AppColors.textSubtle,
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
               for (final b in event.balls)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent.withAlpha(40),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppColors.accent.withAlpha(120),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    BallIcon(number: b.number, size: 26),
+                    const SizedBox(width: 4),
+                    Text(
+                      '+${b.points}',
+                      style: const TextStyle(
+                        color: AppColors.primaryDark,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    'Bi ${b.number} +${b.points}',
-                    style: const TextStyle(
-                      color: AppColors.primaryDark,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
-                  ),
+                  ],
                 ),
               if (event.multiplier > 1)
                 Container(
@@ -393,6 +372,17 @@ class _EventCard extends StatelessWidget {
                       fontSize: 12,
                     ),
                   ),
+                ),
+              const Icon(
+                Icons.arrow_forward_rounded,
+                size: 18,
+                color: AppColors.textSubtle,
+              ),
+              for (final victim in event.victimNames)
+                _PlayerTag(
+                  name: victim,
+                  color: AppColors.victim,
+                  delta: '-${event.pointsPerVictim}',
                 ),
             ],
           ),
