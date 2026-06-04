@@ -4,14 +4,18 @@ import '../models/player.dart';
 class NineBallEngine {
   const NineBallEngine();
 
-  NineBallState startGame(List<String> rawNames, int raceTarget) {
+  NineBallState startGame(
+    List<String> rawNames,
+    int raceTarget, {
+    String? variantLabel,
+  }) {
     final names = rawNames
         .map((name) => name.trim())
         .where((name) => name.isNotEmpty)
         .toList();
 
     if (names.length != 2) {
-      throw ArgumentError('9-Ball cần đúng 2 người chơi.');
+      throw ArgumentError('Pool cần đúng 2 người chơi.');
     }
 
     final uniqueNames = names.map((n) => n.toLowerCase()).toSet();
@@ -35,6 +39,7 @@ class NineBallEngine {
       breakerIndex: 0,
       currentRack: 1,
       status: NineBallStatus.inProgress,
+      variantLabel: variantLabel,
     );
   }
 

@@ -17,9 +17,11 @@ class NineBallSetupScreen extends ConsumerStatefulWidget {
 class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
   late final List<TextEditingController> _controllers;
   int _raceTarget = 5;
+  String _variantLabel = '9-Ball';
   String? _errorText;
 
   static const _raceOptions = [3, 5, 7, 9, 11];
+  static const _variantOptions = ['8-Ball', '9-Ball', '10-Ball'];
 
   @override
   void initState() {
@@ -28,6 +30,11 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
       TextEditingController(text: 'Người chơi 1'),
       TextEditingController(text: 'Người chơi 2'),
     ];
+    // Khôi phục biến thể đã chọn lần trước (nếu có).
+    final saved = ref.read(lastSetupProvider)?.variantLabel;
+    if (saved != null && saved.isNotEmpty) {
+      _variantLabel = saved;
+    }
   }
 
   @override
@@ -57,6 +64,16 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
     }
   }
 
+  Future<void> _showCustomVariantDialog() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => _VariantInputDialog(initial: _variantLabel),
+    );
+    if (result != null && result.isNotEmpty) {
+      setState(() => _variantLabel = result);
+    }
+  }
+
   void _startGame() {
     final names = _controllers.map((c) => c.text).toList();
     final trimmed = names.map((n) => n.trim()).toList();
@@ -73,7 +90,7 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
     try {
       ref
           .read(nineBallControllerProvider.notifier)
-          .startGame(names, _raceTarget);
+          .startGame(names, _raceTarget, variantLabel: _variantLabel);
     } on ArgumentError catch (e) {
       setState(() => _errorText = e.message.toString());
     }
@@ -161,6 +178,45 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
                           ),
                           if (i == 0) const SizedBox(height: 12),
                         ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Biến thể Pool (8/9/10-Ball / Khác)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Loại pool', style: theme.textTheme.titleLarge),
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            for (final v in _variantOptions)
+                              ChoiceChip(
+                                label: Text(v),
+                                selected: v == _variantLabel,
+                                onSelected: (_) {
+                                  setState(() => _variantLabel = v);
+                                },
+                              ),
+                            if (!_variantOptions.contains(_variantLabel))
+                              ChoiceChip(
+                                label: Text(_variantLabel),
+                                selected: true,
+                                onSelected: (_) {},
+                              ),
+                            ActionChip(
+                              avatar: const Icon(Icons.edit_rounded, size: 16),
+                              label: const Text('Khác…'),
+                              onPressed: _showCustomVariantDialog,
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -299,6 +355,71 @@ class _RaceInputDialogState extends State<_RaceInputDialog> {
         onSubmitted: (_) => _confirm(),
         decoration: InputDecoration(
           labelText: 'Số ván cần để thắng',
+          errorText: _error,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Hủy'),
+        ),
+        FilledButton(
+          onPressed: _confirm,
+          child: const Text('Áp dụng'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dialog nhập tên biến thể Pool tuỳ ý (vd "Snooker", "One-pocket", ...).
+/// Tách StatefulWidget riêng để `TextEditingController` dispose đúng lifecycle.
+class _VariantInputDialog extends StatefulWidget {
+  const _VariantInputDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_VariantInputDialog> createState() => _VariantInputDialogState();
+}
+
+class _VariantInputDialogState extends State<_VariantInputDialog> {
+  late final TextEditingController _controller;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initial);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _confirm() {
+    final v = _controller.text.trim();
+    if (v.isEmpty) {
+      setState(() => _error = 'Nhập tên biến thể.');
+      return;
+    }
+    Navigator.of(context).pop(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Loại pool'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        onSubmitted: (_) => _confirm(),
+        decoration: InputDecoration(
+          labelText: 'Tên loại pool',
+          hintText: 'VD: Snooker, One-pocket, ...',
           errorText: _error,
         ),
       ),

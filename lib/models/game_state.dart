@@ -105,7 +105,13 @@ class GameState {
       (s) => s.name == statusName,
       orElse: () => GameStatus.modeSelection,
     );
-    final modeName = json['gameMode'] as String?;
+    final rawModeName = json['gameMode'] as String?;
+    // Migration: enum cũ {nineBall,eightBall,tenBall} đã gộp thành `pool` →
+    // map lại để resume race-to-X đúng shell. Save khác vẫn dùng tên gốc.
+    final modeName = rawModeName != null &&
+            GameMode.legacyPoolNames.contains(rawModeName)
+        ? GameMode.pool.name
+        : rawModeName;
     final gameMode = modeName == null
         ? null
         : GameMode.values.firstWhere(

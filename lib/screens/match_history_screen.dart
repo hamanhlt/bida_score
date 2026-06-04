@@ -9,9 +9,14 @@ import '../widgets/table_background.dart';
 import 'match_detail_screen.dart';
 
 /// Lịch sử tất cả các trận đã kết thúc (bền qua lần mở app). Có tab theo mode:
-/// "Tất cả" + 1 tab mỗi `GameMode` — ấn tab nào ra list trận của mode đó.
+/// "Tất cả" + 1 tab mỗi `GameMode` (trừ `league` — có màn riêng [LeagueHistoryScreen]).
 class MatchHistoryScreen extends ConsumerWidget {
   const MatchHistoryScreen({super.key});
+
+  /// Modes hiển thị thành tab — league có lịch sử riêng nên loại trừ.
+  static final List<GameMode> _historyModes = GameMode.values
+      .where((m) => m != GameMode.league)
+      .toList();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -19,7 +24,7 @@ class MatchHistoryScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return DefaultTabController(
-      length: 1 + GameMode.values.length,
+      length: 1 + _historyModes.length,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
@@ -61,7 +66,7 @@ class MatchHistoryScreen extends ConsumerWidget {
             indicatorWeight: 3,
             tabs: [
               const Tab(text: 'Tất cả'),
-              for (final m in GameMode.values) Tab(text: m.label),
+              for (final m in _historyModes) Tab(text: m.label),
             ],
           ),
         ),
@@ -87,10 +92,10 @@ class MatchHistoryScreen extends ConsumerWidget {
               data: (list) => TabBarView(
                 children: [
                   _MatchListView(matches: list),
-                  for (final m in GameMode.values)
+                  for (final m in _historyModes)
                     _MatchListView(
                       matches: list
-                          .where((x) => x.modeLabel == m.label)
+                          .where((x) => _matchesMode(x.modeLabel, m))
                           .toList(),
                       emptyHint: 'Chưa có trận ${m.label}.',
                     ),
@@ -101,6 +106,21 @@ class MatchHistoryScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Trận có thuộc tab [mode] không. penalty369 chỉ match label "Bắn đền".
+  /// pool match tất cả không phải Bắn đền — gồm "Pool" mới, các biến thể
+  /// "8/9/10-Ball" do user chọn ở Setup, và label legacy từ trận cũ.
+  /// league không lên màn này (có `LeagueHistoryScreen` riêng).
+  bool _matchesMode(String label, GameMode mode) {
+    switch (mode) {
+      case GameMode.penalty369:
+        return label == GameMode.penalty369.label;
+      case GameMode.pool:
+        return label != GameMode.penalty369.label;
+      case GameMode.league:
+        return false;
+    }
   }
 
   Future<bool?> _confirmClear(BuildContext context) {

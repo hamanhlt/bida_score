@@ -22,11 +22,23 @@ class NineBallController extends Notifier<NineBallState> {
   @override
   NineBallState build() => NineBallState.initial();
 
-  void startGame(List<String> names, int raceTarget) {
-    state = _engine.startGame(names, raceTarget);
+  void startGame(
+    List<String> names,
+    int raceTarget, {
+    String? variantLabel,
+  }) {
+    state = _engine.startGame(
+      names,
+      raceTarget,
+      variantLabel: variantLabel,
+    );
     // Engine throw nếu validation fail → state không update → dòng dưới
     // không chạy. Lưu tên vào pool dùng chung → Setup screen lần sau gợi ý.
     unawaited(ref.read(playerNameHistoryProvider.notifier).addAll(names));
+    // Persist variantLabel để Setup mở lần sau auto-select chip cũ.
+    if (variantLabel != null) {
+      ref.read(lastSetupProvider.notifier).setVariant(variantLabel);
+    }
   }
 
   void winRack(int winnerIndex) {
@@ -67,8 +79,8 @@ class NineBallController extends Notifier<NineBallState> {
       ..sort((a, b) => b.score.compareTo(a.score));
     // Số rack đã đấu = số winner đã ghi (đã trừ các decrement nếu có).
     final racksPlayed = state.rackWinnerNames.length;
-    final modeLabel =
-        ref.read(gameControllerProvider).gameMode?.label ?? '9-Ball';
+    // Biến thể (8/9/10-Ball / tuỳ ý) chọn ở Setup → fallback "Pool".
+    final modeLabel = state.variantLabel ?? 'Pool';
     final result = MatchResult(
       finishedAt: DateTime.now(),
       modeLabel: modeLabel,

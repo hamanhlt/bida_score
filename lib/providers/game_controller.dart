@@ -44,6 +44,28 @@ class LastSetupNotifier extends Notifier<LastSetup?> {
     state = setup;
     unawaited(SetupPersistence.save(setup));
   }
+
+  /// Update Bắn đền setup (names + ballConfigs) — preserve variantLabel.
+  void setPenalty(List<String> names, List<BallConfig> configs) {
+    final next = LastSetup(
+      playerNames: names,
+      ballConfigs: configs,
+      variantLabel: state?.variantLabel,
+    );
+    state = next;
+    unawaited(SetupPersistence.save(next));
+  }
+
+  /// Update Pool variant label — preserve Bắn đền names + ballConfigs.
+  void setVariant(String variantLabel) {
+    final next = LastSetup(
+      playerNames: state?.playerNames ?? const [],
+      ballConfigs: state?.ballConfigs ?? const [],
+      variantLabel: variantLabel,
+    );
+    state = next;
+    unawaited(SetupPersistence.save(next));
+  }
 }
 
 /// Seed cho [playerNameHistoryProvider] — override ở `main.dart`.
@@ -128,9 +150,7 @@ class GameController extends Notifier<GameState> {
     // Engine throw nếu validation fail → state không update → set không chạy.
     // Cập nhật cả state in-memory (qua notifier) lẫn disk để Setup screen
     // mount lần sau (cùng app session) đọc được giá trị mới ngay.
-    ref.read(lastSetupProvider.notifier).set(
-      LastSetup(playerNames: names, ballConfigs: ballConfigs),
-    );
+    ref.read(lastSetupProvider.notifier).setPenalty(names, ballConfigs);
     // Lưu tên + cấu hình bi vào history pool — Setup screen lần sau gợi ý lại.
     unawaited(ref.read(playerNameHistoryProvider.notifier).addAll(names));
     unawaited(

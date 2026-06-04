@@ -4,10 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/game_mode.dart';
 import 'models/game_snapshot.dart';
+import 'models/league_state.dart';
 import 'models/nine_ball_state.dart';
 import 'providers/game_controller.dart';
+import 'providers/league_controller.dart';
 import 'providers/nine_ball_controller.dart';
 import 'screens/game_screen.dart';
+import 'screens/league_play_screen.dart';
+import 'screens/league_result_screen.dart';
+import 'screens/league_setup_screen.dart';
 import 'screens/mode_selection_screen.dart';
 import 'screens/nine_ball_game_screen.dart';
 import 'screens/nine_ball_result_screen.dart';
@@ -144,10 +149,12 @@ class _AppShell extends ConsumerWidget {
     // Route theo mode
     final mode = gameState.gameMode;
 
-    if (mode == GameMode.nineBall ||
-        mode == GameMode.eightBall ||
-        mode == GameMode.tenBall) {
+    if (mode == GameMode.pool) {
       return _buildNineBallShell(ref);
+    }
+
+    if (mode == GameMode.league) {
+      return _buildLeagueShell(ref);
     }
 
     // Default: penalty369
@@ -184,6 +191,26 @@ class _AppShell extends ConsumerWidget {
         ),
         NineBallStatus.finished => const NineBallResultScreen(
           key: ValueKey(NineBallStatus.finished),
+        ),
+      },
+    );
+  }
+
+  Widget _buildLeagueShell(WidgetRef ref) {
+    final lgState = ref.watch(leagueControllerProvider);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: switch (lgState.status) {
+        LeagueStatus.setup => const LeagueSetupScreen(
+          key: ValueKey(LeagueStatus.setup),
+        ),
+        LeagueStatus.inProgress => const LeaguePlayScreen(
+          key: ValueKey(LeagueStatus.inProgress),
+        ),
+        LeagueStatus.finished => const LeagueResultScreen(
+          key: ValueKey(LeagueStatus.finished),
         ),
       },
     );

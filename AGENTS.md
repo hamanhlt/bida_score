@@ -1,7 +1,8 @@
 # Bida Score — Project Notes
 
-Flutter app ghi điểm bi-a (Vietnamese billiards). 4 modes: Bắn đền (penalty369),
-10-Ball, 9-Ball, 8-Ball. Target: Android (chính), iOS, Web (PWA via Docker).
+Flutter app ghi điểm bi-a (Vietnamese billiards). 3 modes: Bắn đền (penalty369),
+Pool (race-to-X, biến thể 8/9/10-Ball/tuỳ ý chọn ở Setup), và Giải đấu (league —
+vòng tròn tính điểm). Target: Android (chính), iOS, Web (PWA via Docker).
 
 ## Build / Test / Run
 
@@ -26,7 +27,7 @@ lib/
 ├── app.dart            # MaterialApp + theme + _AppShell routing theo mode
 ├── logic/              # Engine pure functions (không Riverpod, không I/O)
 │   ├── game_engine.dart       # Bắn đền
-│   └── nine_ball_engine.dart  # race-to-X (9/8/10-Ball share)
+│   └── nine_ball_engine.dart  # race-to-X (Pool, dùng cho mọi biến thể)
 ├── providers/          # Riverpod NotifierProvider — wrap engine + ref disk
 ├── models/             # Plain data + JSON serialization
 ├── services/           # SharedPreferences persistence (static methods)
@@ -37,7 +38,17 @@ lib/
 
 **Routing**: `_AppShell` ở [app.dart](lib/app.dart) chọn shell theo `gameState.gameMode`:
 - `penalty369` → SetupScreen / GameScreen / ResultScreen
-- `nineBall` / `eightBall` / `tenBall` → NineBallSetupScreen / NineBallGameScreen / NineBallResultScreen (cùng controller)
+- `pool` → NineBallSetupScreen / NineBallGameScreen / NineBallResultScreen.
+  Setup có chip "Biến thể" (8/9/10-Ball/Khác) → lưu vào `NineBallState.variantLabel`
+  → `MatchResult.modeLabel` khi kết thúc. Identifiers vẫn tên `NineBall*` vì
+  Pool dùng race-to-X engine (đổi tên là refactor riêng nếu muốn).
+- `league` → LeagueSetupScreen / LeaguePlayScreen / LeagueResultScreen.
+  Vòng tròn: N người → N*(N-1)/2 fixtures (shuffle random). Tap 1 fixture →
+  bottom sheet nhập tỷ số → `LeagueController.updateScore` → engine
+  recalculate leaderboard từ đầu (tránh cộng dồn sai khi edit). State
+  **in-memory only** trong khi đang chơi (per spec), persist vào
+  `league_history_v1` chỉ khi bấm "Kết thúc giải". Tie-breaker:
+  Points → GoalDifference → GoalsFor.
 
 ## State management pattern
 
@@ -67,15 +78,23 @@ Mỗi service 1 storage key với version suffix (vd `match_history_v1`):
 - `SetupPersistence` → setup gần nhất (auto-fill Setup screen)
 - `PlayerNameHistoryStorage` → LRU 50 tên đã nhập (pool dùng chung mọi mode).
   `GameController.startGame` + `NineBallController.startGame` đều `addAll(names)`.
-  Setup screens (Bắn đền + 9/8/10-Ball) dùng widget chung
+  Setup screens (Bắn đền + Pool) dùng widget chung
   [`NameHistoryButton`](lib/widgets/name_history_button.dart) làm `suffixIcon`
   field tên (popup gợi ý + nút × xoá entry).
+- `BallConfigHistoryStorage` (`ball_config_history_v1`) → LRU 20 cấu hình bi
+  (pair số + điểm) đã nhập. `GameController.startGame` `addAll(ballConfigs)`.
+  Setup screen Bắn đền: mỗi field (số bi, điểm) có `suffixIcon` `_IntHistoryButton`
+  riêng — popup distinct values từ history pair (chọn số riêng / điểm riêng,
+  không cụm). `LinkedHashSet.toList()` giữ thứ tự mới-nhất-trước.
 - `MatchHistoryController` → list trận đã kết thúc (Dismissible swipe-to-delete).
-  Cả Bắn đền lẫn race-to-X đều ghi vào đây (race-to-X ghi khi đạt race target
-  trong `winRack` hoặc bấm "Kết thúc trận" — xem `NineBallController._recordHistoryIfFinished`).
+  Cả Bắn đền lẫn Pool đều ghi vào đây (Pool ghi khi đạt race target trong
+  `winRack` hoặc bấm "Kết thúc trận" — xem `NineBallController._recordHistoryIfFinished`,
+  `modeLabel` = biến thể đã chọn ở Setup).
   Tap trận → `MatchDetailScreen`: `MatchResult.events` (Bắn đền) → cây ván/lượt
-  (`RoundHistoryView`); `MatchResult.rackWinners` (race-to-X) → play-by-play từng
+  (`RoundHistoryView`); `MatchResult.rackWinners` (Pool) → play-by-play từng
   rack + tỉ số chạy (`_RackPlayByPlay`). 1 trong 2 list được điền, cái kia rỗng.
+  Tab Lịch sử filter: Bắn đền (`modeLabel == 'Bắn đền'`) vs Pool (mọi cái khác
+  — gồm cả legacy "8/9/10-Ball" cho backward-compat).
 - `CoverImageStorage` (`cover_image_v1`) → ảnh bìa tuỳ chỉnh (base64 bytes).
   User long-press banner ở Mode Selection → bottom sheet → `image_picker`
   (gallery, maxWidth 1280, quality 80) → `coverImageProvider.set(bytes)`.

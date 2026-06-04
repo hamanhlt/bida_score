@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/nine_ball_state.dart';
-import '../providers/game_controller.dart';
 import '../providers/nine_ball_controller.dart';
 import '../widgets/table_background.dart';
 
@@ -23,8 +22,8 @@ class NineBallGameScreen extends ConsumerWidget {
     final w1 = state.rackWins[0];
     final w2 = state.rackWins[1];
 
-    final modeLabel =
-        ref.watch(gameControllerProvider).gameMode?.label ?? '9-Ball';
+    // Hiển thị biến thể đã chọn (8/9/10-Ball/tuỳ ý) — fallback "Pool".
+    final modeLabel = state.variantLabel ?? 'Pool';
 
     return Scaffold(
       backgroundColor: Colors.transparent,

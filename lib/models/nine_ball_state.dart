@@ -11,6 +11,7 @@ class NineBallSnapshot {
     required this.currentRack,
     required this.status,
     List<String> rackWinnerNames = const [],
+    this.variantLabel,
   }) : players = List.unmodifiable(players),
        rackWins = List.unmodifiable(rackWins),
        rackWinnerNames = List.unmodifiable(rackWinnerNames);
@@ -25,6 +26,10 @@ class NineBallSnapshot {
   /// Tên người thắng từng rack theo thứ tự (rack 1 = phần tử 0, ...). Snapshot
   /// giữ luôn để undo khôi phục đúng.
   final List<String> rackWinnerNames;
+
+  /// Biến thể Pool ("8-Ball"/"9-Ball"/"10-Ball"/tuỳ ý) — set lúc startGame,
+  /// không đổi trong trận. Snapshot giữ để undo không lạc.
+  final String? variantLabel;
 }
 
 class NineBallState {
@@ -37,6 +42,7 @@ class NineBallState {
     this.status = NineBallStatus.setup,
     List<NineBallSnapshot> history = const [],
     List<String> rackWinnerNames = const [],
+    this.variantLabel,
   }) : players = List.unmodifiable(players),
        rackWins = List.unmodifiable(
          rackWins.isEmpty && players.isNotEmpty
@@ -61,6 +67,7 @@ class NineBallState {
       status: snapshot.status,
       history: history,
       rackWinnerNames: snapshot.rackWinnerNames,
+      variantLabel: snapshot.variantLabel,
     );
   }
 
@@ -75,6 +82,10 @@ class NineBallState {
   /// Tên người thắng từng rack theo thứ tự (chronological). `length` luôn
   /// bằng tổng `rackWins`. Dùng cho MatchDetailScreen play-by-play.
   final List<String> rackWinnerNames;
+
+  /// Biến thể Pool đã chọn ở Setup ("8-Ball"/"9-Ball"/"10-Ball"/tuỳ ý) — set
+  /// lúc startGame, không đổi trong trận. Dùng làm `modeLabel` khi ghi MatchResult.
+  final String? variantLabel;
 
   bool get canUndo => history.isNotEmpty;
 
@@ -97,6 +108,7 @@ class NineBallState {
       currentRack: currentRack,
       status: status,
       rackWinnerNames: rackWinnerNames,
+      variantLabel: variantLabel,
     );
   }
 
@@ -109,6 +121,7 @@ class NineBallState {
     NineBallStatus? status,
     List<NineBallSnapshot>? history,
     List<String>? rackWinnerNames,
+    String? variantLabel,
   }) {
     return NineBallState(
       players: players ?? this.players,
@@ -119,6 +132,7 @@ class NineBallState {
       status: status ?? this.status,
       history: history ?? this.history,
       rackWinnerNames: rackWinnerNames ?? this.rackWinnerNames,
+      variantLabel: variantLabel ?? this.variantLabel,
     );
   }
 }
