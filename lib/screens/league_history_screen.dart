@@ -81,15 +81,13 @@ class LeagueHistoryScreen extends ConsumerWidget {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Dismissible(
-                          // Key stable: ưu tiên finishedAt; fallback hash các
-                          // field bất biến trong league để 2 entry "không
-                          // finishedAt" không trùng key → tránh Dismissible
-                          // confusion khi xoá.
+                          // Stable key theo `id` (engine sinh hoặc legacy
+                          // fallback). Tránh re-attach Dismissible state
+                          // sang row khác sau khi xoá + reorder.
                           key: ValueKey(_dismissKey(league, i)),
                           direction: DismissDirection.endToStart,
                           background: const _DismissBg(),
-                          confirmDismiss: (_) =>
-                              _confirmRemoveOne(itemContext),
+                          confirmDismiss: (_) => _confirmRemoveOne(itemContext),
                           onDismissed: (_) => notifier.removeLeague(league),
                           child: _LeagueCard(league: league),
                         ),
@@ -102,13 +100,14 @@ class LeagueHistoryScreen extends ConsumerWidget {
     );
   }
 
-  /// Stable key per entry. Combine finishedAt với names + matchesPlayed +
-  /// index — unique kể cả khi finishedAt null hoặc 2 entry cùng moment.
+  /// Stable key per entry. Ưu tiên `league.id` (engine guarantee non-empty;
+  /// legacy fromJson cũng fallback `_legacyId`). Fallback composite khi
+  /// data quá cũ id rỗng.
   String _dismissKey(LeagueState league, int index) {
-    final finishedTag = league.finishedAt?.microsecondsSinceEpoch.toString() ??
-        'noend';
-    final nameTag =
-        league.players.map((p) => p.name).join('|');
+    if (league.id.isNotEmpty) return 'lg_${league.id}';
+    final finishedTag =
+        league.finishedAt?.microsecondsSinceEpoch.toString() ?? 'noend';
+    final nameTag = league.players.map((p) => p.name).join('|');
     return '${finishedTag}_${league.matchesPlayed}_${nameTag.hashCode}_$index';
   }
 
@@ -174,10 +173,7 @@ class _DismissBg extends StatelessWidget {
           SizedBox(width: 8),
           Text(
             'Xoá',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
           ),
         ],
       ),
@@ -232,10 +228,19 @@ class _LeagueCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final champion =
-        league.players.isNotEmpty ? league.players.first : null;
-    final runnerUp =
-        league.players.length > 1 ? league.players[1] : null;
+    final showPodium = league.usesGroupStage
+        ? league.knockoutComplete
+        : league.matchesPlayed > 0;
+    final champion = showPodium && league.usesGroupStage
+        ? league.championPlayer
+        : showPodium && league.players.isNotEmpty
+        ? league.players.first
+        : null;
+    final runnerUp = showPodium && league.usesGroupStage
+        ? league.runnerUpPlayer
+        : showPodium && league.players.length > 1
+        ? league.players[1]
+        : null;
 
     return Container(
       decoration: BoxDecoration(
@@ -275,8 +280,8 @@ class _LeagueCard extends StatelessWidget {
                         color: AppColors.primaryDark,
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: const Text(
-                        'Giải đấu',
+                      child: Text(
+                        league.phaseLabel,
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 11,
@@ -284,15 +289,20 @@ class _LeagueCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Text(
-                      '${league.players.length} người · ${league.matchesPlayed}/${league.matchesTotal} trận',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSubtle,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${league.players.length} người · ${league.phaseLabel} · '
+                        '${league.matchesPlayed}/${league.matchesTotal} trận',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSubtle,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     Text(
                       _formatDate(league.finishedAt),
                       style: theme.textTheme.bodySmall?.copyWith(
@@ -308,18 +318,31 @@ class _LeagueCard extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 10),
+                Text(
+                  league.displayName,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: AppColors.textDark,
+                    fontWeight: FontWeight.w900,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
                 if (champion != null) ...[
                   const SizedBox(height: 12),
                   _ChampionRow(
                     name: champion.name,
-                    points: champion.points,
+                    trailing: league.usesGroupStage
+                        ? 'Vô địch'
+                        : '${champion.points} đ',
                     medal: AppColors.trophyGold,
                   ),
                   if (runnerUp != null) ...[
                     const SizedBox(height: 4),
                     _ChampionRow(
                       name: runnerUp.name,
-                      points: runnerUp.points,
+                      trailing: league.usesGroupStage
+                          ? 'Á quân'
+                          : '${runnerUp.points} đ',
                       medal: AppColors.trophySilver,
                       rank: 2,
                     ),
@@ -344,13 +367,13 @@ class _LeagueCard extends StatelessWidget {
 class _ChampionRow extends StatelessWidget {
   const _ChampionRow({
     required this.name,
-    required this.points,
+    required this.trailing,
     required this.medal,
     this.rank = 1,
   });
 
   final String name;
-  final int points;
+  final String trailing;
   final Color medal;
   final int rank;
 
@@ -389,7 +412,7 @@ class _ChampionRow extends StatelessWidget {
           ),
         ),
         Text(
-          '$points đ',
+          trailing,
           style: const TextStyle(
             color: AppColors.primary,
             fontWeight: FontWeight.w900,

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/game_mode.dart';
 import '../providers/cover_image_controller.dart';
 import '../providers/game_controller.dart';
+import '../providers/league_history_controller.dart';
 import '../providers/match_history_controller.dart';
 import '../theme/app_colors.dart';
 import '../widgets/ball_icon.dart';
@@ -153,10 +154,16 @@ class _HistoryEntryCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final historyAsync = ref.watch(matchHistoryControllerProvider);
-    final count = historyAsync.maybeWhen(
+    final leagueHistoryAsync = ref.watch(leagueHistoryControllerProvider);
+    final matchCount = historyAsync.maybeWhen(
       data: (list) => list.length,
       orElse: () => 0,
     );
+    final leagueCount = leagueHistoryAsync.maybeWhen(
+      data: (list) => list.length,
+      orElse: () => 0,
+    );
+    final count = matchCount + leagueCount;
 
     return Card(
       child: InkWell(
@@ -170,13 +177,13 @@ class _HistoryEntryCard extends ConsumerWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: AppColors.accent.withAlpha(40),
+                  color: const Color(0xFF2F80ED).withAlpha(32),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: const Center(
                   child: Icon(
-                    Icons.emoji_events_rounded,
-                    color: AppColors.accent,
+                    Icons.history_edu_rounded,
+                    color: Color(0xFF2F80ED),
                     size: 26,
                   ),
                 ),
@@ -195,8 +202,8 @@ class _HistoryEntryCard extends ConsumerWidget {
                     const SizedBox(height: 4),
                     Text(
                       count == 0
-                          ? 'Chưa có trận nào được lưu.'
-                          : 'Đã lưu $count trận. Nhấn để xem.',
+                          ? 'Chưa có trận hoặc giải nào được lưu.'
+                          : 'Đã lưu $matchCount trận, $leagueCount giải. Nhấn để xem.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: AppColors.textSubtle,
                       ),

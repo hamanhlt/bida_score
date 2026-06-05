@@ -2,26 +2,38 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/game_mode.dart';
+import '../models/league_state.dart';
 import '../models/match_result.dart';
+import '../providers/league_history_controller.dart';
 import '../providers/match_history_controller.dart';
 import '../theme/app_colors.dart';
 import '../widgets/table_background.dart';
+import 'league_result_screen.dart';
 import 'match_detail_screen.dart';
 
-/// Lịch sử tất cả các trận đã kết thúc (bền qua lần mở app). Có tab theo mode:
-/// "Tất cả" + 1 tab mỗi `GameMode` (trừ `league` — có màn riêng [LeagueHistoryScreen]).
+/// Lịch sử tất cả các trận/giải đã kết thúc (bền qua lần mở app).
+/// Có tab "Tất cả" + 1 tab mỗi [GameMode].
 class MatchHistoryScreen extends ConsumerWidget {
   const MatchHistoryScreen({super.key});
 
-  /// Modes hiển thị thành tab — league có lịch sử riêng nên loại trừ.
-  static final List<GameMode> _historyModes = GameMode.values
-      .where((m) => m != GameMode.league)
-      .toList();
+  static final List<GameMode> _historyModes = GameMode.values.toList();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final historyAsync = ref.watch(matchHistoryControllerProvider);
+    final leagueHistoryAsync = ref.watch(leagueHistoryControllerProvider);
     final theme = Theme.of(context);
+    final matches = historyAsync.valueOrNull ?? const <MatchResult>[];
+    final leagues = leagueHistoryAsync.valueOrNull ?? const <LeagueState>[];
+    final entries = _buildEntries(matches, leagues);
+    final isLoading = historyAsync.isLoading || leagueHistoryAsync.isLoading;
+    final error = historyAsync.maybeWhen(
+      error: (err, _) => err,
+      orElse: () => leagueHistoryAsync.maybeWhen(
+        error: (err, _) => err,
+        orElse: () => null,
+      ),
+    );
 
     return DefaultTabController(
       length: 1 + _historyModes.length,
@@ -39,23 +51,23 @@ class MatchHistoryScreen extends ConsumerWidget {
             ),
           ),
           actions: [
-            historyAsync.maybeWhen(
-              data: (list) => list.isEmpty
-                  ? const SizedBox.shrink()
-                  : IconButton(
-                      tooltip: 'Xoá tất cả',
-                      icon: const Icon(Icons.delete_outline_rounded),
-                      onPressed: () async {
-                        final ok = await _confirmClear(context);
-                        if (ok == true) {
-                          await ref
-                              .read(matchHistoryControllerProvider.notifier)
-                              .clearAll();
-                        }
-                      },
-                    ),
-              orElse: () => const SizedBox.shrink(),
-            ),
+            entries.isEmpty
+                ? const SizedBox.shrink()
+                : IconButton(
+                    tooltip: 'Xoá tất cả',
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    onPressed: () async {
+                      final ok = await _confirmClear(context);
+                      if (ok == true) {
+                        await ref
+                            .read(matchHistoryControllerProvider.notifier)
+                            .clearAll();
+                        await ref
+                            .read(leagueHistoryControllerProvider.notifier)
+                            .clearAll();
+                      }
+                    },
+                  ),
           ],
           bottom: TabBar(
             isScrollable: true,
@@ -73,46 +85,58 @@ class MatchHistoryScreen extends ConsumerWidget {
         body: TableBackground(
           child: SafeArea(
             top: false,
-            child: historyAsync.when(
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: AppColors.primary),
-              ),
-              error: (err, _) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    'Không đọc được lịch sử: $err',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: AppColors.victim,
+            child: isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  )
+                : error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Không đọc được lịch sử: $error',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: AppColors.victim,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
-                    textAlign: TextAlign.center,
+                  )
+                : TabBarView(
+                    children: [
+                      _HistoryListView(entries: entries),
+                      for (final m in _historyModes)
+                        _HistoryListView(
+                          entries: entries
+                              .where((x) => _matchesMode(x, m))
+                              .toList(),
+                          emptyHint: 'Chưa có lịch sử ${m.label}.',
+                        ),
+                    ],
                   ),
-                ),
-              ),
-              data: (list) => TabBarView(
-                children: [
-                  _MatchListView(matches: list),
-                  for (final m in _historyModes)
-                    _MatchListView(
-                      matches: list
-                          .where((x) => _matchesMode(x.modeLabel, m))
-                          .toList(),
-                      emptyHint: 'Chưa có trận ${m.label}.',
-                    ),
-                ],
-              ),
-            ),
           ),
         ),
       ),
     );
   }
 
-  /// Trận có thuộc tab [mode] không. penalty369 chỉ match label "Bắn đền".
+  List<_HistoryEntry> _buildEntries(
+    List<MatchResult> matches,
+    List<LeagueState> leagues,
+  ) {
+    final entries = [
+      for (final match in matches) _HistoryEntry.match(match),
+      for (final league in leagues) _HistoryEntry.league(league),
+    ]..sort((a, b) => b.finishedAt.compareTo(a.finishedAt));
+    return entries;
+  }
+
+  /// Entry có thuộc tab [mode] không. penalty369 chỉ match label "Bắn đền".
   /// pool match tất cả không phải Bắn đền — gồm "Pool" mới, các biến thể
   /// "8/9/10-Ball" do user chọn ở Setup, và label legacy từ trận cũ.
-  /// league không lên màn này (có `LeagueHistoryScreen` riêng).
-  bool _matchesMode(String label, GameMode mode) {
+  bool _matchesMode(_HistoryEntry entry, GameMode mode) {
+    if (entry.league != null) return mode == GameMode.league;
+    final label = entry.match!.modeLabel;
     switch (mode) {
       case GameMode.penalty369:
         return label == GameMode.penalty369.label;
@@ -129,7 +153,7 @@ class MatchHistoryScreen extends ConsumerWidget {
       builder: (_) => AlertDialog(
         title: const Text('Xoá toàn bộ lịch sử?'),
         content: const Text(
-          'Tất cả trận đã lưu (mọi mode) sẽ bị xoá và không khôi phục được.',
+          'Tất cả trận và giải đã lưu sẽ bị xoá và không khôi phục được.',
         ),
         actions: [
           TextButton(
@@ -146,38 +170,74 @@ class MatchHistoryScreen extends ConsumerWidget {
   }
 }
 
-/// List trận (đã lọc theo mode hoặc tất cả). Swipe-to-delete từng trận, tap để
-/// mở chi tiết (nếu có). Rỗng → hiện hint.
-class _MatchListView extends ConsumerWidget {
-  const _MatchListView({required this.matches, this.emptyHint});
+class _HistoryEntry {
+  const _HistoryEntry._({this.match, this.league});
 
-  final List<MatchResult> matches;
+  factory _HistoryEntry.match(MatchResult match) =>
+      _HistoryEntry._(match: match);
+
+  factory _HistoryEntry.league(LeagueState league) =>
+      _HistoryEntry._(league: league);
+
+  final MatchResult? match;
+  final LeagueState? league;
+
+  DateTime get finishedAt =>
+      match?.finishedAt ??
+      league?.finishedAt ??
+      DateTime.fromMillisecondsSinceEpoch(0);
+
+  String get dismissKey {
+    final matchValue = match;
+    if (matchValue != null) {
+      return 'match_${matchValue.finishedAt.toIso8601String()}';
+    }
+    final leagueValue = league!;
+    return 'league_${leagueValue.id}_${leagueValue.finishedAt?.toIso8601String() ?? 'noend'}';
+  }
+}
+
+/// List lịch sử (đã lọc theo mode hoặc tất cả). Swipe-to-delete từng entry,
+/// tap để mở chi tiết. Rỗng → hiện hint.
+class _HistoryListView extends ConsumerWidget {
+  const _HistoryListView({required this.entries, this.emptyHint});
+
+  final List<_HistoryEntry> entries;
 
   /// Text hiện khi list rỗng. Null → dùng empty-state mặc định ("Tất cả").
   final String? emptyHint;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (matches.isEmpty) {
+    if (entries.isEmpty) {
       return _EmptyState(hint: emptyHint);
     }
-    final notifier = ref.read(matchHistoryControllerProvider.notifier);
+    final matchNotifier = ref.read(matchHistoryControllerProvider.notifier);
+    final leagueNotifier = ref.read(leagueHistoryControllerProvider.notifier);
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-      itemCount: matches.length,
+      itemCount: entries.length,
       itemBuilder: (itemContext, i) {
-        final match = matches[i];
+        final entry = entries[i];
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Dismissible(
-            // finishedAt là DateTime unique mỗi lần addResult.
-            key: ValueKey(match.finishedAt.toIso8601String()),
+            key: ValueKey(entry.dismissKey),
             direction: DismissDirection.endToStart,
             background: _DismissBackground(),
             confirmDismiss: (_) => _confirmRemoveOne(itemContext),
-            onDismissed: (_) => notifier.removeMatch(match),
-            child: _MatchCard(match: match),
+            onDismissed: (_) {
+              final match = entry.match;
+              if (match != null) {
+                matchNotifier.removeMatch(match);
+                return;
+              }
+              leagueNotifier.removeLeague(entry.league!);
+            },
+            child: entry.match != null
+                ? _MatchCard(match: entry.match!)
+                : _LeagueHistoryCard(league: entry.league!),
           ),
         );
       },
@@ -189,7 +249,7 @@ class _MatchListView extends ConsumerWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Xoá trận này?'),
-        content: const Text('Trận đã chọn sẽ bị xoá khỏi lịch sử.'),
+        content: const Text('Mục đã chọn sẽ bị xoá khỏi lịch sử.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -222,10 +282,7 @@ class _DismissBackground extends StatelessWidget {
           SizedBox(width: 8),
           Text(
             'Xoá',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
           ),
         ],
       ),
@@ -255,7 +312,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              hint ?? 'Chưa có trận nào được lưu',
+              hint ?? 'Chưa có lịch sử nào được lưu',
               style: theme.textTheme.titleMedium?.copyWith(
                 color: AppColors.textBody,
               ),
@@ -263,7 +320,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Kết thúc 1 trận để lưu vào lịch sử.',
+              'Kết thúc 1 trận hoặc 1 giải để lưu vào lịch sử.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: AppColors.textSubtle,
               ),
@@ -273,6 +330,155 @@ class _EmptyState extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _LeagueHistoryCard extends StatelessWidget {
+  const _LeagueHistoryCard({required this.league});
+
+  final LeagueState league;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final showPodium = league.usesGroupStage
+        ? league.knockoutComplete
+        : league.matchesPlayed > 0;
+    final champion = showPodium && league.usesGroupStage
+        ? league.championPlayer
+        : showPodium && league.players.isNotEmpty
+        ? league.players.first
+        : null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(10),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => LeagueResultScreen(league: league),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryDark,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'Giải đấu',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${league.players.length} người · ${league.phaseLabel}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSubtle,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _formatDate(league.finishedAt),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSubtle,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: AppColors.textSubtle,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  league.displayName,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: AppColors.textDark,
+                    fontWeight: FontWeight.w900,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (champion != null) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.emoji_events_rounded,
+                        color: AppColors.accent,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          champion.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: AppColors.primaryDark,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        league.usesGroupStage
+                            ? 'Vô địch'
+                            : '${champion.points} đ',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime? at) {
+    if (at == null) return '';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(at.day)}/${two(at.month)}/${at.year} '
+        '${two(at.hour)}:${two(at.minute)}';
   }
 }
 
@@ -312,15 +518,19 @@ class _MatchCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Text(
-                '${match.roundsPlayed} ván',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSubtle,
-                  fontWeight: FontWeight.w600,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${match.roundsPlayed} ván',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSubtle,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Text(
                 _formatDate(match.finishedAt),
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -340,11 +550,7 @@ class _MatchCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           for (var i = 0; i < match.players.length; i++) ...[
-            _PlayerRow(
-              rank: i + 1,
-              player: match.players[i],
-              isWinner: i == 0,
-            ),
+            _PlayerRow(rank: i + 1, player: match.players[i], isWinner: i == 0),
             if (i != match.players.length - 1) const SizedBox(height: 6),
           ],
         ],
@@ -370,10 +576,10 @@ class _MatchCard extends StatelessWidget {
         child: InkWell(
           onTap: tappable
               ? () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => MatchDetailScreen(match: match),
-                    ),
-                  )
+                  MaterialPageRoute<void>(
+                    builder: (_) => MatchDetailScreen(match: match),
+                  ),
+                )
               : null,
           child: content,
         ),
@@ -410,8 +616,8 @@ class _PlayerRow extends StatelessWidget {
     final scoreColor = player.score > 0
         ? AppColors.primary
         : player.score < 0
-            ? AppColors.victim
-            : AppColors.textBody;
+        ? AppColors.victim
+        : AppColors.textBody;
 
     return Row(
       children: [

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/league_state.dart';
+import '../models/match_fixture.dart';
 import '../providers/league_controller.dart';
 import '../theme/app_colors.dart';
 import '../widgets/table_background.dart';
@@ -24,8 +25,7 @@ class LeagueResultScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final LeagueState state =
-        league ?? ref.watch(leagueControllerProvider);
+    final LeagueState state = league ?? ref.watch(leagueControllerProvider);
     final theme = Theme.of(context);
     final isFromHistory = league != null;
 
@@ -54,73 +54,121 @@ class LeagueResultScreen extends ConsumerWidget {
           ),
         );
       }
-      return const SizedBox.shrink();
+      // Trạng thái không hợp lệ ngoài history (vd lỗi defensive) — render
+      // Scaffold với back button để user không kẹt màn trắng.
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          foregroundColor: Colors.white,
+          iconTheme: const IconThemeData(color: Colors.white),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () =>
+                ref.read(leagueControllerProvider.notifier).backToList(),
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              'Dữ liệu giải không hợp lệ.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSubtle,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
     }
 
-    final champion = state.players.first;
+    final champion = state.usesGroupStage
+        ? state.championPlayer
+        : state.players.first;
     // Không trao "vô địch" nếu chưa đấu trận nào — champion sẽ là người
     // alphabet đầu tiên với 0 điểm, gây hiểu nhầm.
-    final showChampion = state.matchesPlayed > 0;
+    final showChampion = state.usesGroupStage
+        ? champion != null && state.knockoutComplete
+        : state.matchesPlayed > 0;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: isFromHistory
-          ? AppBar(
-              foregroundColor: Colors.white,
-              iconTheme: const IconThemeData(color: Colors.white),
-              title: Text(
-                'Giải đấu · ${_formatDate(state.finishedAt)}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
+    return PopScope(
+      // Khi từ history (push qua Navigator) → để default pop. Khi từ
+      // finishTournament → hardware back về list (KHÔNG pop Navigator
+      // vì screen này là child của _AppShell, không có route phía dưới).
+      canPop: isFromHistory,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || isFromHistory) return;
+        ref.read(leagueControllerProvider.notifier).backToList();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: isFromHistory
+            ? AppBar(
+                foregroundColor: Colors.white,
+                iconTheme: const IconThemeData(color: Colors.white),
+                title: Text(
+                  '${state.displayName} · ${_formatDate(state.finishedAt)}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
                 ),
-              ),
-            )
-          : null,
-      body: TableBackground(
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (!isFromHistory) ...[
-                  Text(
-                    'Kết quả giải',
-                    style: theme.textTheme.displaySmall?.copyWith(
-                      color: AppColors.textDark,
+              )
+            : null,
+        body: TableBackground(
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!isFromHistory) ...[
+                    Text(
+                      state.displayName,
+                      style: theme.textTheme.displaySmall?.copyWith(
+                        color: AppColors.textDark,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Giải đã chốt và lưu vào lịch sử.',
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: AppColors.textBody,
+                    const SizedBox(height: 8),
+                    Text(
+                      'Kết quả giải đã chốt và lưu vào lịch sử.',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: AppColors.textBody,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                ],
-                if (showChampion) ...[
-                  _ChampionCard(name: champion.name, points: champion.points),
+                    const SizedBox(height: 18),
+                  ],
+                  if (showChampion) ...[
+                    _ChampionCard(
+                      name: champion!.name,
+                      badgeText: state.usesGroupStage
+                          ? 'Knockout'
+                          : '${champion.points} điểm',
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  _StatsCard(state: state),
                   const SizedBox(height: 14),
+                  if (state.usesGroupStage) ...[
+                    LeagueGroupsStandingsView(state: state, scrollable: false),
+                    _KnockoutSummary(state: state),
+                  ] else
+                    LeagueStandingsView(
+                      players: state.players,
+                      highlightChampion: showChampion,
+                    ),
+                  const SizedBox(height: 20),
+                  if (!isFromHistory)
+                    FilledButton.icon(
+                      onPressed: () => ref
+                          .read(leagueControllerProvider.notifier)
+                          .backToList(),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      label: const Text('Về danh sách giải'),
+                    ),
                 ],
-                _StatsCard(state: state),
-                const SizedBox(height: 14),
-                LeagueStandingsView(
-                  players: state.players,
-                  highlightChampion: showChampion,
-                ),
-                const SizedBox(height: 20),
-                if (!isFromHistory)
-                  FilledButton.icon(
-                    onPressed: () => ref
-                        .read(leagueControllerProvider.notifier)
-                        .resetTournament(),
-                    icon: const Icon(Icons.replay_rounded),
-                    label: const Text('Tạo giải mới'),
-                  ),
-              ],
+              ),
             ),
           ),
         ),
@@ -137,10 +185,10 @@ class LeagueResultScreen extends ConsumerWidget {
 }
 
 class _ChampionCard extends StatelessWidget {
-  const _ChampionCard({required this.name, required this.points});
+  const _ChampionCard({required this.name, required this.badgeText});
 
   final String name;
-  final int points;
+  final String badgeText;
 
   @override
   Widget build(BuildContext context) {
@@ -176,16 +224,13 @@ class _ChampionCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 6,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             decoration: BoxDecoration(
               color: AppColors.accent,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Text(
-              '$points điểm',
+              badgeText,
               style: const TextStyle(
                 color: AppColors.textDark,
                 fontWeight: FontWeight.w900,
@@ -219,6 +264,9 @@ class _StatsCard extends StatelessWidget {
         runSpacing: 8,
         children: [
           _Chip(label: 'Số người: ${state.players.length}'),
+          _Chip(label: state.phaseLabel),
+          if (state.usesGroupStage)
+            _Chip(label: '${state.groups.length} bảng · ${_groupSizeText()}'),
           _Chip(label: 'Số trận: ${state.matchesPlayed}/${state.matchesTotal}'),
           if (unfinished > 0)
             _Chip(
@@ -227,9 +275,7 @@ class _StatsCard extends StatelessWidget {
               textColor: AppColors.victim,
             ),
           if (state.finishedAt != null)
-            _Chip(
-              label: _formatDate(state.finishedAt!),
-            ),
+            _Chip(label: _formatDate(state.finishedAt!)),
         ],
       ),
     );
@@ -239,6 +285,127 @@ class _StatsCard extends StatelessWidget {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(at.day)}/${two(at.month)}/${at.year} '
         '${two(at.hour)}:${two(at.minute)}';
+  }
+
+  String _groupSizeText() {
+    final sizes = [for (final g in state.groups) g.playerIds.length];
+    if (sizes.isEmpty) return '${state.groupSize} người';
+    final uniqueSizes = sizes.toSet();
+    if (uniqueSizes.length == 1) return '${sizes.first} người/bảng';
+    return sizes.join(' + ');
+  }
+}
+
+class _KnockoutSummary extends StatelessWidget {
+  const _KnockoutSummary({required this.state});
+
+  final LeagueState state;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.knockoutFixtures.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final nameById = {for (final p in state.players) p.id: p.name};
+    final byRound = <int, List<MatchFixture>>{};
+    for (final f in state.knockoutFixtures) {
+      byRound.putIfAbsent(f.roundIndex, () => []).add(f);
+    }
+    final rounds = byRound.keys.toList()..sort();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 2),
+        Text(
+          'Nhánh knockout',
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: AppColors.textDark,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final round in rounds) ...[
+          Text(
+            byRound[round]!.first.roundName,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: AppColors.textBody,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final fixture in byRound[round]!)
+            _KnockoutResultRow(
+              p1Name: nameById[fixture.player1Id] ?? '?',
+              p2Name: nameById[fixture.player2Id] ?? '?',
+              score: fixture.isPlayed
+                  ? '${fixture.score1} – ${fixture.score2}'
+                  : 'Chưa đấu',
+            ),
+          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+}
+
+class _KnockoutResultRow extends StatelessWidget {
+  const _KnockoutResultRow({
+    required this.p1Name,
+    required this.p2Name,
+    required this.score,
+  });
+
+  final String p1Name;
+  final String p2Name;
+  final String score;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              p1Name,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.primaryDark,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(
+              score,
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w900,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              p2Name,
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.primaryDark,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

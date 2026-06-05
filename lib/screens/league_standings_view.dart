@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/league_player.dart';
+import '../models/league_state.dart';
 import '../theme/app_colors.dart';
 
 /// Bảng xếp hạng league — table với cột: # · Tên · Trận · Thắng · GF · GA · HS · Điểm.
@@ -28,9 +29,9 @@ class LeagueStandingsView extends StatelessWidget {
           padding: const EdgeInsets.all(32),
           child: Text(
             'Chưa có người chơi.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.textSubtle,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppColors.textSubtle),
           ),
         ),
       );
@@ -38,32 +39,111 @@ class LeagueStandingsView extends StatelessWidget {
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(10),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          children: [
-            const _StandingsHeader(),
-            for (var i = 0; i < players.length; i++)
-              _StandingsRow(
-                rank: i + 1,
-                player: players[i],
-                isLast: i == players.length - 1,
-                highlightChampion: highlightChampion,
+      child: _StandingsTable(
+        players: players,
+        highlightChampion: highlightChampion,
+      ),
+    );
+  }
+}
+
+class LeagueGroupsStandingsView extends StatelessWidget {
+  const LeagueGroupsStandingsView({
+    super.key,
+    required this.state,
+    this.highlightQualified = true,
+    this.scrollable = true,
+  });
+
+  final LeagueState state;
+  final bool highlightQualified;
+  final bool scrollable;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.groups.isEmpty) {
+      return LeagueStandingsView(players: state.players);
+    }
+
+    final theme = Theme.of(context);
+    final content = Column(
+      children: [
+        for (final group in state.groups) ...[
+          Row(
+            children: [
+              Text(
+                group.name,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: AppColors.textDark,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-          ],
-        ),
+              const SizedBox(width: 8),
+              Text(
+                'Top 2 đi tiếp',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppColors.textBody,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _StandingsTable(
+            players: state.playersInGroup(group),
+            highlightQualified: highlightQualified,
+          ),
+          const SizedBox(height: 14),
+        ],
+      ],
+    );
+    if (!scrollable) return content;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: content,
+    );
+  }
+}
+
+class _StandingsTable extends StatelessWidget {
+  const _StandingsTable({
+    required this.players,
+    this.highlightChampion = false,
+    this.highlightQualified = false,
+  });
+
+  final List<LeaguePlayer> players;
+  final bool highlightChampion;
+  final bool highlightQualified;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(10),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          const _StandingsHeader(),
+          for (var i = 0; i < players.length; i++)
+            _StandingsRow(
+              rank: i + 1,
+              player: players[i],
+              isLast: i == players.length - 1,
+              highlightChampion: highlightChampion,
+              highlightQualified: highlightQualified,
+            ),
+        ],
       ),
     );
   }
@@ -84,7 +164,7 @@ class _StandingsHeader extends StatelessWidget {
           Expanded(child: _HeaderText('Người chơi')),
           _HeaderCell('Trận', width: 36),
           _HeaderCell('HS', width: 42),
-          _HeaderCell('Điểm', width: 46),
+          _HeaderCell('Điểm', width: 54),
         ],
       ),
     );
@@ -118,10 +198,7 @@ class _HeaderCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      child: _HeaderText(text, center: true),
-    );
+    return SizedBox(width: width, child: _HeaderText(text, center: true));
   }
 }
 
@@ -131,12 +208,14 @@ class _StandingsRow extends StatelessWidget {
     required this.player,
     required this.isLast,
     required this.highlightChampion,
+    required this.highlightQualified,
   });
 
   final int rank;
   final LeaguePlayer player;
   final bool isLast;
   final bool highlightChampion;
+  final bool highlightQualified;
 
   @override
   Widget build(BuildContext context) {
@@ -148,8 +227,12 @@ class _StandingsRow extends StatelessWidget {
             _ => null,
           }
         : null;
+    final qualifiedColor = highlightQualified && rank <= 2
+        ? AppColors.shooter
+        : null;
 
-    final rowBg = medalColor?.withAlpha(28) ?? Colors.transparent;
+    final rowBg =
+        (medalColor ?? qualifiedColor)?.withAlpha(28) ?? Colors.transparent;
 
     return Container(
       decoration: BoxDecoration(
@@ -166,7 +249,7 @@ class _StandingsRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 28,
-            child: _RankBadge(rank: rank, color: medalColor),
+            child: _RankBadge(rank: rank, color: medalColor ?? qualifiedColor),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -182,25 +265,17 @@ class _StandingsRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          _StatCell(
-            text: '${player.matchesPlayed}',
-            width: 36,
-          ),
+          _StatCell(text: '${player.matchesPlayed}', width: 36),
           _StatCell(
             text: _formatSigned(player.goalDifference),
             width: 42,
             color: player.goalDifference > 0
                 ? AppColors.shooter
                 : player.goalDifference < 0
-                    ? AppColors.victim
-                    : AppColors.textSubtle,
+                ? AppColors.victim
+                : AppColors.textSubtle,
           ),
-          _StatCell(
-            text: '${player.points}',
-            width: 46,
-            color: AppColors.primary,
-            bold: true,
-          ),
+          _PointsCell(text: '${player.points}'),
         ],
       ),
     );
@@ -254,13 +329,11 @@ class _StatCell extends StatelessWidget {
     required this.text,
     required this.width,
     this.color = AppColors.textBody,
-    this.bold = false,
   });
 
   final String text;
   final double width;
   final Color color;
-  final bool bold;
 
   @override
   Widget build(BuildContext context) {
@@ -271,9 +344,43 @@ class _StatCell extends StatelessWidget {
         textAlign: TextAlign.center,
         style: TextStyle(
           color: color,
-          fontWeight: bold ? FontWeight.w900 : FontWeight.w700,
+          fontWeight: FontWeight.w700,
           fontSize: 14,
           fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
+}
+
+class _PointsCell extends StatelessWidget {
+  const _PointsCell({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 54,
+      child: Align(
+        alignment: Alignment.center,
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 34),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppColors.accent,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.textDark,
+              fontWeight: FontWeight.w900,
+              fontSize: 15,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
         ),
       ),
     );

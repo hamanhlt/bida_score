@@ -7,9 +7,9 @@ import '../models/league_state.dart';
 /// Lưu lịch sử các giải đấu đã kết thúc — list `LeagueState` (status =
 /// finished). Mới nhất đầu list. Persist qua SharedPreferences.
 ///
-/// Đúng với spec "in-memory during tournament, persist on finish":
-/// LeagueController KHÔNG auto-save state đang chơi. Chỉ khi user bấm "Kết
-/// thúc giải" → `finishTournament` → `addResult(state)` → ghi disk.
+/// Khác với `ActiveLeaguesStorage` (lưu list giải đang chơi để resume):
+/// file này chỉ chứa giải đã chốt. `finishTournament` → `addResult(state)`
+/// append vào đây + xoá giải đó khỏi active list.
 class LeagueHistoryStorage {
   LeagueHistoryStorage._();
 

@@ -16,7 +16,7 @@ enum GameMode {
   ),
   league(
     'Giải đấu',
-    'Vòng tròn — mỗi người gặp nhau 1 lần. Bảng xếp hạng realtime.',
+    'Vòng tròn hoặc vòng bảng + knockout. Bảng xếp hạng realtime.',
     '🏆',
   );
 

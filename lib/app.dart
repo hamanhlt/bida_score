@@ -4,12 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/game_mode.dart';
 import 'models/game_snapshot.dart';
+import 'models/league_session.dart';
 import 'models/league_state.dart';
 import 'models/nine_ball_state.dart';
 import 'providers/game_controller.dart';
 import 'providers/league_controller.dart';
+import 'providers/league_session_controller.dart';
 import 'providers/nine_ball_controller.dart';
 import 'screens/game_screen.dart';
+import 'screens/league_list_screen.dart';
 import 'screens/league_play_screen.dart';
 import 'screens/league_result_screen.dart';
 import 'screens/league_setup_screen.dart';
@@ -197,6 +200,12 @@ class _AppShell extends ConsumerWidget {
   }
 
   Widget _buildLeagueShell(WidgetRef ref) {
+    // viewMode quyết định màn ngoài cùng (list vs current). Khi current,
+    // route theo LeagueState.status như cũ.
+    final session = ref.watch(leagueSessionControllerProvider);
+    if (session.viewMode == LeagueViewMode.list) {
+      return const LeagueListScreen(key: ValueKey(LeagueViewMode.list));
+    }
     final lgState = ref.watch(leagueControllerProvider);
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 260),

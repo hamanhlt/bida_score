@@ -42,13 +42,19 @@ lib/
   Setup có chip "Biến thể" (8/9/10-Ball/Khác) → lưu vào `NineBallState.variantLabel`
   → `MatchResult.modeLabel` khi kết thúc. Identifiers vẫn tên `NineBall*` vì
   Pool dùng race-to-X engine (đổi tên là refactor riêng nếu muốn).
-- `league` → LeagueSetupScreen / LeaguePlayScreen / LeagueResultScreen.
+- `league` → LeagueListScreen (landing) → LeagueSetupScreen /
+  LeaguePlayScreen / LeagueResultScreen của 1 giải cụ thể. Hỗ trợ
+  **nhiều giải song song**: mỗi giải có `id` riêng (sinh ở engine), lưu
+  vào list `active_leagues_v1` qua `ActiveLeaguesController` (listenSelf
+  auto-persist). User switch giữa các giải không mất tỷ số.
   Vòng tròn: N người → N*(N-1)/2 fixtures (shuffle random). Tap 1 fixture →
   bottom sheet nhập tỷ số → `LeagueController.updateScore` → engine
-  recalculate leaderboard từ đầu (tránh cộng dồn sai khi edit). State
-  **in-memory only** trong khi đang chơi (per spec), persist vào
-  `league_history_v1` chỉ khi bấm "Kết thúc giải". Tie-breaker:
-  Points → GoalDifference → GoalsFor.
+  recalculate leaderboard từ đầu → listenSelf upsert vào active list.
+  Session (`league_session_v1`) lưu viewMode + currentId → app mở lại
+  landing đúng màn user đang xem dở.
+  Bấm "Kết thúc giải" → append vào `league_history_v1` + remove khỏi
+  active list (thứ tự: history xong mới remove để không mất giải khi crash).
+  Tie-breaker: Points → GoalDifference → GoalsFor.
 
 ## State management pattern
 

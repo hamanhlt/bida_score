@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../logic/league_engine.dart';
 import '../providers/game_controller.dart';
 import '../providers/league_controller.dart';
 import '../theme/app_colors.dart';
@@ -18,8 +19,13 @@ class LeagueSetupScreen extends ConsumerStatefulWidget {
 }
 
 class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
+  final TextEditingController _nameController = TextEditingController(
+    text: 'Giải đấu mới',
+  );
   final List<TextEditingController> _controllers = [];
   String? _errorText;
+  bool _useGroupKnockout = false;
+  int _groupSize = 4;
 
   static const _minPlayers = 3;
   static const _maxPlayers = 16;
@@ -31,10 +37,12 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     for (var i = 0; i < 4; i++) {
       _controllers.add(TextEditingController(text: 'Người chơi ${i + 1}'));
     }
+    _syncGroupSize();
   }
 
   @override
   void dispose() {
+    _nameController.dispose();
     for (final c in _controllers) {
       c.dispose();
     }
@@ -47,6 +55,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       _controllers.add(
         TextEditingController(text: 'Người chơi ${_controllers.length + 1}'),
       );
+      _syncGroupSize();
     });
   }
 
@@ -54,6 +63,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     if (_controllers.length <= _minPlayers) return;
     setState(() {
       _controllers.removeAt(index).dispose();
+      _syncGroupSize();
     });
   }
 
@@ -68,7 +78,28 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     if (_errorText != null) setState(() => _errorText = null);
   }
 
+  List<int> get _validGroupSizes =>
+      LeagueEngine.validGroupSizesFor(_controllers.length);
+
+  int _preferredGroupSize(List<int> sizes) {
+    if (sizes.contains(4)) return 4;
+    return sizes.isEmpty ? _groupSize : sizes.last;
+  }
+
+  void _syncGroupSize() {
+    final sizes = _validGroupSizes;
+    if (sizes.isEmpty) return;
+    if (!sizes.contains(_groupSize)) {
+      _groupSize = _preferredGroupSize(sizes);
+    }
+  }
+
   void _start() {
+    final tournamentName = _nameController.text.trim();
+    if (tournamentName.isEmpty) {
+      setState(() => _errorText = 'Tên giải không được để trống.');
+      return;
+    }
     final names = _controllers.map((c) => c.text.trim()).toList();
     if (names.any((n) => n.isEmpty)) {
       setState(() => _errorText = 'Mỗi người chơi cần có tên.');
@@ -79,9 +110,22 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       setState(() => _errorText = 'Tên người chơi phải khác nhau.');
       return;
     }
+    final groupSize = _useGroupKnockout ? _groupSize : null;
+    if (_useGroupKnockout && !_validGroupSizes.contains(_groupSize)) {
+      setState(
+        () => _errorText = 'Số người hiện tại chưa tạo được 2/4/8 bảng hợp lệ.',
+      );
+      return;
+    }
 
     try {
-      ref.read(leagueControllerProvider.notifier).startTournament(names);
+      ref
+          .read(leagueControllerProvider.notifier)
+          .startTournament(
+            names,
+            tournamentName: tournamentName,
+            groupSize: groupSize,
+          );
       // Lưu tên vào pool dùng chung (Setup screen lần sau gợi ý lại).
       // Fire-and-forget — không block UI navigation.
       ref.read(playerNameHistoryProvider.notifier).addAll(names);
@@ -98,149 +142,276 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     final theme = Theme.of(context);
     final canRemove = _controllers.length > _minPlayers;
     final canAdd = _controllers.length < _maxPlayers;
+    final validGroupSizes = _validGroupSizes;
+    final selectedGroupSize = validGroupSizes.contains(_groupSize)
+        ? _groupSize
+        : (validGroupSizes.isEmpty
+              ? null
+              : _preferredGroupSize(validGroupSizes));
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: TableBackground(
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    onPressed: () {
-                      ref.read(gameControllerProvider.notifier).resetGame();
-                    },
-                    icon: const Icon(Icons.arrow_back),
-                    padding: EdgeInsets.zero,
+    return PopScope(
+      // Hardware back → quay về list (đồng nhất AppBar back).
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        ref.read(leagueControllerProvider.notifier).backToList();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: TableBackground(
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Align(
                     alignment: Alignment.centerLeft,
-                    color: AppColors.textDark,
+                    child: IconButton(
+                      onPressed: () {
+                        // Quay về list giải đấu (không xoá active list).
+                        ref
+                            .read(leagueControllerProvider.notifier)
+                            .backToList();
+                      },
+                      icon: const Icon(Icons.arrow_back),
+                      padding: EdgeInsets.zero,
+                      alignment: Alignment.centerLeft,
+                      color: AppColors.textDark,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Giải đấu',
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    color: AppColors.textDark,
+                  const SizedBox(height: 12),
+                  Text(
+                    'Giải đấu',
+                    style: theme.textTheme.displaySmall?.copyWith(
+                      color: AppColors.textDark,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Vòng tròn — mỗi người gặp nhau đúng 1 lần. Thắng = +1 điểm.',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: AppColors.textBody,
+                  const SizedBox(height: 8),
+                  Text(
+                    'Chọn vòng tròn hoặc chia bảng rồi đấu knockout.',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: AppColors.textBody,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              'Người chơi',
-                              style: theme.textTheme.titleLarge,
+                  const SizedBox(height: 24),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: TextField(
+                        controller: _nameController,
+                        textInputAction: TextInputAction.next,
+                        onChanged: (_) => _clearError(),
+                        decoration: const InputDecoration(
+                          labelText: 'Tên giải',
+                          prefixIcon: Icon(Icons.drive_file_rename_outline),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Người chơi',
+                                style: theme.textTheme.titleLarge,
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${_controllers.length}/$_maxPlayers',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: AppColors.textSubtle,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Tối thiểu $_minPlayers người. Tổng số trận = '
+                            'N×(N-1)/2 = ${_pairCount(_controllers.length)} trận.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textSubtle,
                             ),
-                            const Spacer(),
+                          ),
+                          const SizedBox(height: 14),
+                          for (var i = 0; i < _controllers.length; i++) ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _controllers[i],
+                                    textInputAction:
+                                        i == _controllers.length - 1
+                                        ? TextInputAction.done
+                                        : TextInputAction.next,
+                                    onChanged: (_) => _clearError(),
+                                    decoration: InputDecoration(
+                                      labelText: 'Người chơi ${i + 1}',
+                                      suffixIcon: NameHistoryButton(
+                                        excluded: _otherNames(i),
+                                        onPick: (name) {
+                                          _controllers[i].text = name;
+                                          _controllers[i].selection =
+                                              TextSelection.collapsed(
+                                                offset: name.length,
+                                              );
+                                          _clearError();
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                IconButton.filledTonal(
+                                  onPressed: canRemove
+                                      ? () => _removeRow(i)
+                                      : null,
+                                  tooltip: 'Xoá người chơi',
+                                  icon: const Icon(Icons.remove_rounded),
+                                ),
+                              ],
+                            ),
+                            if (i != _controllers.length - 1)
+                              const SizedBox(height: 12),
+                          ],
+                          const SizedBox(height: 14),
+                          OutlinedButton.icon(
+                            onPressed: canAdd ? _addRow : null,
+                            icon: const Icon(Icons.person_add_rounded),
+                            label: const Text('Thêm người chơi'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  DefaultTabController(
+                    length: 2,
+                    initialIndex: _useGroupKnockout ? 1 : 0,
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Thể thức', style: theme.textTheme.titleLarge),
+                            const SizedBox(height: 12),
+                            TabBar(
+                              onTap: (index) {
+                                setState(() {
+                                  _useGroupKnockout = index == 1;
+                                  _syncGroupSize();
+                                  _errorText = null;
+                                });
+                              },
+                              labelColor: AppColors.primaryDark,
+                              unselectedLabelColor: AppColors.textSubtle,
+                              indicatorColor: AppColors.accent,
+                              indicatorWeight: 3,
+                              tabs: const [
+                                Tab(
+                                  text: 'Vòng tròn',
+                                  icon: Icon(Icons.table_rows_rounded),
+                                ),
+                                Tab(
+                                  text: 'Vòng bảng',
+                                  icon: Icon(Icons.account_tree_rounded),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            if (_useGroupKnockout) ...[
+                              DropdownButtonFormField<int>(
+                                initialValue: selectedGroupSize,
+                                decoration: const InputDecoration(
+                                  labelText: 'Số người mỗi bảng',
+                                ),
+                                items: [
+                                  for (final size in validGroupSizes)
+                                    DropdownMenuItem<int>(
+                                      value: size,
+                                      child: Text('$size người / bảng'),
+                                    ),
+                                ],
+                                onChanged: validGroupSizes.isEmpty
+                                    ? null
+                                    : (value) {
+                                        if (value == null) return;
+                                        setState(() {
+                                          _groupSize = value;
+                                          _errorText = null;
+                                        });
+                                      },
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                validGroupSizes.isEmpty
+                                    ? 'Hãy đổi số người hoặc size bảng để tạo được 2/4/8 bảng.'
+                                    : 'Sẽ có ${LeagueEngine.groupCountFor(_controllers.length, selectedGroupSize!)} bảng '
+                                          '(${_plannedGroupSizeText(selectedGroupSize)}), '
+                                          'lấy 2 người đầu mỗi bảng vào knockout.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: validGroupSizes.isEmpty
+                                      ? theme.colorScheme.error
+                                      : AppColors.textSubtle,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ] else
+                              Text(
+                                'Mỗi người gặp nhau đúng 1 lần. Thắng = +1 điểm.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: AppColors.textSubtle,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            const SizedBox(height: 10),
                             Text(
-                              '${_controllers.length}/$_maxPlayers',
+                              'Dự kiến: ${_plannedMatchCount()} trận.',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: AppColors.textSubtle,
-                                fontWeight: FontWeight.w700,
+                                color: AppColors.textBody,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Tối thiểu $_minPlayers người. Tổng số trận = '
-                          'N×(N-1)/2 = ${_pairCount(_controllers.length)} trận.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: AppColors.textSubtle,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        for (var i = 0; i < _controllers.length; i++) ...[
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _controllers[i],
-                                  textInputAction: i == _controllers.length - 1
-                                      ? TextInputAction.done
-                                      : TextInputAction.next,
-                                  onChanged: (_) => _clearError(),
-                                  decoration: InputDecoration(
-                                    labelText: 'Người chơi ${i + 1}',
-                                    suffixIcon: NameHistoryButton(
-                                      excluded: _otherNames(i),
-                                      onPick: (name) {
-                                        _controllers[i].text = name;
-                                        _controllers[i].selection =
-                                            TextSelection.collapsed(
-                                          offset: name.length,
-                                        );
-                                        _clearError();
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              IconButton.filledTonal(
-                                onPressed: canRemove
-                                    ? () => _removeRow(i)
-                                    : null,
-                                tooltip: 'Xoá người chơi',
-                                icon: const Icon(Icons.remove_rounded),
-                              ),
-                            ],
-                          ),
-                          if (i != _controllers.length - 1)
-                            const SizedBox(height: 12),
-                        ],
-                        const SizedBox(height: 14),
-                        OutlinedButton.icon(
-                          onPressed: canAdd ? _addRow : null,
-                          icon: const Icon(Icons.person_add_rounded),
-                          label: const Text('Thêm người chơi'),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-                if (_errorText != null) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    _errorText!,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.error,
-                      fontWeight: FontWeight.w700,
+                  if (_errorText != null) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      _errorText!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.error,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  Card(
+                    color: AppColors.textDark,
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: FilledButton(
+                        onPressed: _start,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.accent,
+                          foregroundColor: AppColors.textDark,
+                        ),
+                        child: const Text('Tạo giải'),
+                      ),
                     ),
                   ),
                 ],
-                const SizedBox(height: 20),
-                Card(
-                  color: AppColors.textDark,
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: FilledButton(
-                      onPressed: _start,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.accent,
-                        foregroundColor: AppColors.textDark,
-                      ),
-                      child: const Text('Tạo giải'),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -249,4 +420,30 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
   }
 
   int _pairCount(int n) => n < 2 ? 0 : n * (n - 1) ~/ 2;
+
+  int _plannedMatchCount() {
+    final playerCount = _controllers.length;
+    if (!_useGroupKnockout || !_validGroupSizes.contains(_groupSize)) {
+      return _pairCount(playerCount);
+    }
+    final groupSizes = LeagueEngine.plannedGroupSizesFor(
+      playerCount,
+      _groupSize,
+    );
+    final groupMatches = groupSizes.fold<int>(
+      0,
+      (sum, size) => sum + _pairCount(size),
+    );
+    final knockoutPlayers = groupSizes.length * 2;
+    return groupMatches + knockoutPlayers - 1;
+  }
+
+  String _plannedGroupSizeText(int groupSize) {
+    final sizes = LeagueEngine.plannedGroupSizesFor(
+      _controllers.length,
+      groupSize,
+    );
+    if (sizes.isEmpty) return '';
+    return sizes.map((s) => '$s').join(' + ');
+  }
 }
