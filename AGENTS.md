@@ -127,6 +127,9 @@ không đụng điểm/lịch sử ai, record undo snapshot. Nút ở AppBar Pop
 - **Tiếng Việt**: text UI + comments + commit messages — toàn bộ tiếng Việt.
 - **Color literals**: dùng `Color(0xFFXXXXXX)` hex trong UI riêng; share via
   `AppColors` ([theme/app_colors.dart](lib/theme/app_colors.dart)) khi 2+ chỗ dùng.
+- **Tương phản chữ/nền**: nền tối dùng chữ/icon sáng, nền sáng dùng chữ/icon tối.
+  Với container/chip/card tự set màu nền, dùng `AppColors.readableOn(background)`
+  để chọn màu chữ thay vì hardcode.
 - **Engine throws** `ArgumentError` cho validation fail → caller bắt + setState
   errorText. State không update nếu validation fail.
 - **Fire-and-forget persist**: `unawaited(GamePersistence.save(state))` trong

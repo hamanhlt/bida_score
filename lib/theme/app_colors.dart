@@ -31,4 +31,17 @@ abstract final class AppColors {
   static const trophyGold = accent;
   static const trophySilver = Color(0xFF7AA3C8);
   static const trophyBronze = Color(0xFFB97A56);
+
+  /// Màu chữ/icon dễ đọc trên một màu nền cụ thể.
+  ///
+  /// Nền tối → chữ trắng, nền sáng → chữ tối. Dùng helper này cho các chip,
+  /// pill, card custom hoặc container tự set background thay vì hardcode màu
+  /// chữ theo cảm tính.
+  static Color readableOn(
+    Color background, {
+    Color darkText = textDark,
+    Color lightText = Colors.white,
+  }) {
+    return background.computeLuminance() < 0.5 ? lightText : darkText;
+  }
 }
