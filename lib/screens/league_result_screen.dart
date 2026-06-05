@@ -265,9 +265,20 @@ class _StatsCard extends StatelessWidget {
         children: [
           _Chip(label: 'Số người: ${state.players.length}'),
           _Chip(label: state.phaseLabel),
-          if (state.usesGroupStage)
+          if (state.usesGroupStage) ...[
             _Chip(label: '${state.groups.length} bảng · ${_groupSizeText()}'),
-          _Chip(label: 'Số trận: ${state.matchesPlayed}/${state.matchesTotal}'),
+            _Chip(
+              label:
+                  'Vòng bảng: ${state.groupMatchesPlayed}/${state.groupMatchesTotal}',
+            ),
+            _Chip(
+              label:
+                  'Knockout: ${state.knockoutMatchesPlayed}/${state.knockoutMatchesTotal}',
+            ),
+          ] else
+            _Chip(
+              label: 'Số trận: ${state.matchesPlayed}/${state.matchesTotal}',
+            ),
           if (unfinished > 0)
             _Chip(
               label: '$unfinished trận chưa đấu',

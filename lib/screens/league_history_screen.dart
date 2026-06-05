@@ -292,8 +292,7 @@ class _LeagueCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '${league.players.length} người · ${league.phaseLabel} · '
-                        '${league.matchesPlayed}/${league.matchesTotal} trận',
+                        _summaryText(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -361,6 +360,16 @@ class _LeagueCard extends StatelessWidget {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(at.day)}/${two(at.month)}/${at.year} '
         '${two(at.hour)}:${two(at.minute)}';
+  }
+
+  String _summaryText() {
+    if (!league.usesGroupStage) {
+      return '${league.players.length} người · '
+          '${league.matchesPlayed}/${league.matchesTotal} trận';
+    }
+    return '${league.players.length} người · '
+        'Bảng ${league.groupMatchesPlayed}/${league.groupMatchesTotal} · '
+        'KO ${league.knockoutMatchesPlayed}/${league.knockoutMatchesTotal}';
   }
 }
 
