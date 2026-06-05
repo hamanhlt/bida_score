@@ -26,11 +26,13 @@ class LeagueState {
     List<LeaguePlayer> players = const [],
     List<LeagueGroup> groups = const [],
     List<MatchFixture> fixtures = const [],
+    List<String> knockoutByePlayerIds = const [],
     this.startedAt,
     this.finishedAt,
   }) : players = List.unmodifiable(players),
        groups = List.unmodifiable(groups),
-       fixtures = List.unmodifiable(fixtures);
+       fixtures = List.unmodifiable(fixtures),
+       knockoutByePlayerIds = List.unmodifiable(knockoutByePlayerIds);
 
   factory LeagueState.initial() => LeagueState();
 
@@ -44,6 +46,7 @@ class LeagueState {
   final List<LeaguePlayer> players;
   final List<LeagueGroup> groups;
   final List<MatchFixture> fixtures;
+  final List<String> knockoutByePlayerIds;
   final DateTime? startedAt;
   final DateTime? finishedAt;
 
@@ -134,6 +137,7 @@ class LeagueState {
     List<LeaguePlayer>? players,
     List<LeagueGroup>? groups,
     List<MatchFixture>? fixtures,
+    List<String>? knockoutByePlayerIds,
     DateTime? startedAt,
     DateTime? finishedAt,
   }) {
@@ -146,6 +150,7 @@ class LeagueState {
       players: players ?? this.players,
       groups: groups ?? this.groups,
       fixtures: fixtures ?? this.fixtures,
+      knockoutByePlayerIds: knockoutByePlayerIds ?? this.knockoutByePlayerIds,
       startedAt: startedAt ?? this.startedAt,
       finishedAt: finishedAt ?? this.finishedAt,
     );
@@ -160,6 +165,7 @@ class LeagueState {
     'players': players.map((p) => p.toJson()).toList(),
     'groups': groups.map((g) => g.toJson()).toList(),
     'fixtures': fixtures.map((f) => f.toJson()).toList(),
+    'knockoutByePlayerIds': knockoutByePlayerIds,
     'startedAt': startedAt?.toIso8601String(),
     'finishedAt': finishedAt?.toIso8601String(),
   };
@@ -205,6 +211,10 @@ class LeagueState {
       fixtures: (json['fixtures'] as List<dynamic>? ?? const [])
           .map((e) => MatchFixture.fromJson(e as Map<String, dynamic>))
           .toList(),
+      knockoutByePlayerIds:
+          (json['knockoutByePlayerIds'] as List<dynamic>? ?? const [])
+              .whereType<String>()
+              .toList(),
       startedAt: startedAt,
       finishedAt: _parseDate(json['finishedAt']),
     );

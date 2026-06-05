@@ -38,8 +38,8 @@ class LeaguePlayScreen extends ConsumerWidget {
         child: Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(
-            foregroundColor: Colors.white,
-            iconTheme: const IconThemeData(color: Colors.white),
+            foregroundColor: AppColors.textDark,
+            iconTheme: const IconThemeData(color: AppColors.textDark),
             // Back về danh sách giải (active list giữ nguyên, giải vẫn ở đó).
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
@@ -50,7 +50,7 @@ class LeaguePlayScreen extends ConsumerWidget {
               '${state.displayName} · ${state.phaseLabel} · '
               '${state.matchesPlayed}/${state.matchesTotal} trận',
               style: const TextStyle(
-                color: Colors.white,
+                color: AppColors.textDark,
                 fontWeight: FontWeight.w800,
                 fontSize: 16,
               ),
@@ -77,8 +77,8 @@ class LeaguePlayScreen extends ConsumerWidget {
               ),
             ],
             bottom: const TabBar(
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white60,
+              labelColor: AppColors.textDark,
+              unselectedLabelColor: AppColors.textSubtle,
               indicatorColor: AppColors.accent,
               indicatorWeight: 3,
               tabs: [

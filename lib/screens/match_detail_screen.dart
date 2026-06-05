@@ -19,12 +19,12 @@ class MatchDetailScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        foregroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.white),
+        foregroundColor: AppColors.textDark,
+        iconTheme: const IconThemeData(color: AppColors.textDark),
         title: Text(
           '${match.modeLabel} · ${_formatDate(match.finishedAt)}',
           style: const TextStyle(
-            color: Colors.white,
+            color: AppColors.textDark,
             fontWeight: FontWeight.w800,
             fontSize: 16,
           ),
@@ -77,27 +77,27 @@ class MatchDetailScreen extends StatelessWidget {
                 )) {
                   // Bắn đền — cây ván/lượt.
                   (true, _) => RoundHistoryView(
-                      events: match.events,
-                      totalRounds: match.roundsPlayed,
-                    ),
+                    events: match.events,
+                    totalRounds: match.roundsPlayed,
+                  ),
                   // race-to-X — play-by-play từng rack.
                   (false, true) => _RackPlayByPlay(
-                      rackWinners: match.rackWinners,
-                      playerNames: [for (final p in match.players) p.name],
-                    ),
+                    rackWinners: match.rackWinners,
+                    playerNames: [for (final p in match.players) p.name],
+                  ),
                   // Trận cũ không lưu chi tiết.
                   (false, false) => Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Text(
-                          'Trận này không lưu chi tiết từng lượt.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: AppColors.textSubtle,
-                          ),
-                          textAlign: TextAlign.center,
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Text(
+                        'Trận này không lưu chi tiết từng lượt.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textSubtle,
                         ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
+                  ),
                 },
               ),
             ],
@@ -117,10 +117,7 @@ class MatchDetailScreen extends StatelessWidget {
 /// Play-by-play từng rack cho mode race-to-X (9/8/10-Ball). Mới nhất ở trên,
 /// mỗi dòng: "Rack N · [người thắng] thắng" + tỉ số chạy tới rack đó.
 class _RackPlayByPlay extends StatelessWidget {
-  const _RackPlayByPlay({
-    required this.rackWinners,
-    required this.playerNames,
-  });
+  const _RackPlayByPlay({required this.rackWinners, required this.playerNames});
 
   /// Tên người thắng từng rack, theo thứ tự (rack 1 = phần tử 0).
   final List<String> rackWinners;
@@ -268,8 +265,8 @@ class _PlayerScoreRow extends StatelessWidget {
     final scoreColor = score > 0
         ? AppColors.shooter
         : score < 0
-            ? AppColors.negativeSoft
-            : Colors.white70;
+        ? AppColors.negativeSoft
+        : Colors.white70;
 
     return Row(
       children: [

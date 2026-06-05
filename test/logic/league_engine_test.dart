@@ -252,6 +252,33 @@ void main() {
       expect(state.fixtures.every((f) => f.stage == MatchStage.group), isTrue);
     });
 
+    test('group stage keeps manual group order from setup screen', () {
+      final local = LeagueEngine(rng: Random(12));
+      final state = local.startTournament([
+        'A1',
+        'A2',
+        'B1',
+        'B2',
+        'C1',
+        'C2',
+        'D1',
+        'D2',
+      ], groupSize: 2);
+
+      expect(state.groups, hasLength(4));
+      final namesById = {for (final p in state.players) p.id: p.name};
+      final groupedNames = [
+        for (final group in state.groups)
+          [for (final id in group.playerIds) namesById[id]],
+      ];
+      expect(groupedNames, [
+        ['A1', 'A2'],
+        ['B1', 'B2'],
+        ['C1', 'C2'],
+        ['D1', 'D2'],
+      ]);
+    });
+
     test(
       'groupSize accepts odd remainder by adding players to existing groups',
       () {
@@ -267,6 +294,76 @@ void main() {
         expect(LeagueEngine.validGroupSizesFor(9), contains(4));
       },
     );
+
+    test('group size options are fixed from 2 to 6', () {
+      expect(LeagueEngine.validGroupSizesFor(8), [2, 3, 4, 5, 6]);
+      expect(LeagueEngine.validGroupSizesFor(12), [2, 3, 4, 5, 6]);
+    });
+
+    test('3 bảng dùng play-off và bye trước bán kết knockout', () {
+      final local = LeagueEngine(rng: Random(13));
+      var state = local.startTournament(
+        List.generate(12, (i) => 'P$i'),
+        groupSize: 4,
+      );
+
+      expect(state.groups, hasLength(3));
+      expect(state.groups.map((g) => g.playerIds.length), [4, 4, 4]);
+
+      for (final group in state.groups) {
+        final rankById = {
+          for (var i = 0; i < group.playerIds.length; i++)
+            group.playerIds[i]: i,
+        };
+        final fixtures = state.groupFixtures
+            .where((f) => f.groupId == group.id)
+            .toList();
+        for (final f in fixtures) {
+          final p1Rank = rankById[f.player1Id]!;
+          final p2Rank = rankById[f.player2Id]!;
+          state = local.updateScore(
+            state,
+            f.id,
+            p1Rank < p2Rank ? 3 : 0,
+            p1Rank < p2Rank ? 0 : 3,
+          );
+        }
+      }
+
+      state = local.startKnockout(state);
+
+      expect(state.knockoutByePlayerIds, hasLength(2));
+      expect(state.knockoutFixtures, hasLength(2));
+      expect(state.knockoutFixtures.map((f) => f.roundName).toSet(), {
+        'Play-off',
+      });
+      final decoded = LeagueState.fromJson(
+        Map<String, dynamic>.from(state.toJson()),
+      );
+      expect(decoded.knockoutByePlayerIds, state.knockoutByePlayerIds);
+
+      final playoffs = state.knockoutFixtures
+          .where((f) => f.roundIndex == 1)
+          .toList();
+      for (final f in playoffs) {
+        state = local.updateScore(state, f.id, 4, 2);
+      }
+
+      expect(state.knockoutByePlayerIds, isEmpty);
+      final semis = state.knockoutFixtures
+          .where((f) => f.roundIndex == 2)
+          .toList();
+      expect(semis, hasLength(2));
+      expect(semis.map((f) => f.roundName).toSet(), {'Bán kết'});
+
+      for (final f in semis) {
+        state = local.updateScore(state, f.id, 5, 3);
+      }
+      final finals = state.knockoutFixtures.where(
+        (f) => f.roundName == 'Chung kết',
+      );
+      expect(finals, hasLength(1));
+    });
 
     test('vòng bảng hoàn tất vẫn chờ xác nhận trước khi vào knockout', () {
       final local = LeagueEngine(rng: Random(8));

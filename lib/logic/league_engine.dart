@@ -24,29 +24,24 @@ class LeagueEngine {
 
   static const _minPlayers = 3;
   static const _maxPlayers = 16;
-  static const _minGroupSize = 2;
   static const _maxScore = 999;
+  static const List<int> groupSizeOptions = [2, 3, 4, 5, 6];
 
   static List<int> validGroupSizesFor(int playerCount) {
     if (playerCount < _minPlayers || playerCount > _maxPlayers) {
       return const [];
     }
-    final sizes = <int>[];
-    for (var size = _minGroupSize; size <= playerCount; size++) {
-      final groupCount = groupCountFor(playerCount, size);
-      if (groupCount == 0) continue;
-      sizes.add(size);
-    }
-    return sizes;
+    return groupSizeOptions;
   }
 
   static int groupCountFor(int playerCount, int groupSize) {
-    if (playerCount < _minPlayers || groupSize < _minGroupSize) return 0;
+    if (playerCount < _minPlayers ||
+        playerCount > _maxPlayers ||
+        !groupSizeOptions.contains(groupSize)) {
+      return 0;
+    }
     final groupCount = playerCount ~/ groupSize;
     if (groupCount < 2) return 0;
-    if (!_isPowerOfTwo(groupCount)) return 0;
-    final remainder = playerCount % groupSize;
-    if (remainder >= groupCount) return 0;
     return groupCount;
   }
 
@@ -56,9 +51,14 @@ class LeagueEngine {
     final sizes = List<int>.filled(groupCount, groupSize);
     final remainder = playerCount % groupSize;
     for (var i = 0; i < remainder; i++) {
-      sizes[i] += 1;
+      sizes[i % sizes.length] += 1;
     }
     return sizes;
+  }
+
+  static bool canStartGroupKnockout(int playerCount, int groupSize) {
+    final sizes = plannedGroupSizesFor(playerCount, groupSize);
+    return sizes.length >= 2 && sizes.every((size) => size >= 2);
   }
 
   /// Khởi tạo giải đấu: validate tên, sinh lịch round-robin (mỗi cặp gặp đúng
@@ -68,7 +68,7 @@ class LeagueEngine {
   /// Throw [ArgumentError] khi:
   /// - Số người chơi < [_minPlayers] hoặc > [_maxPlayers].
   /// - Có tên trùng (case-insensitive sau trim).
-  /// - [groupSize] không chia được thành số bảng hợp lệ cho knockout.
+  /// - [groupSize] không tạo được tối thiểu 2 bảng, mỗi bảng đủ top 2.
   LeagueState startTournament(
     List<String> rawNames, {
     String tournamentName = '',
@@ -254,10 +254,16 @@ class LeagueEngine {
   // ────────────────────────── internals ──────────────────────────
 
   void _validateGroupSize(int playerCount, int groupSize) {
-    if (!validGroupSizesFor(playerCount).contains(groupSize)) {
+    if (!groupSizeOptions.contains(groupSize)) {
+      throw ArgumentError('Số người mỗi bảng cần chọn từ 2 đến 6.');
+    }
+    final sizes = plannedGroupSizesFor(playerCount, groupSize);
+    if (sizes.length < 2) {
+      throw ArgumentError('Cần tạo ít nhất 2 bảng để đấu knockout.');
+    }
+    if (sizes.any((size) => size < 2)) {
       throw ArgumentError(
-        'Số người mỗi bảng chưa hợp lệ. Cần tạo được 2/4/8 bảng '
-        'để lấy top 2 vào knockout.',
+        'Mỗi bảng cần ít nhất 2 người để lấy top 2 vào knockout.',
       );
     }
   }
@@ -390,11 +396,12 @@ class LeagueEngine {
     final firstRound = _createFirstKnockoutRound(state);
     return state.copyWith(
       phase: LeaguePhase.knockout,
-      fixtures: [...state.fixtures, ...firstRound],
+      fixtures: [...state.fixtures, ...firstRound.fixtures],
+      knockoutByePlayerIds: firstRound.byePlayerIds,
     );
   }
 
-  List<MatchFixture> _createFirstKnockoutRound(LeagueState state) {
+  _KnockoutRoundPlan _createFirstKnockoutRound(LeagueState state) {
     final winners = <LeaguePlayer>[];
     final runnersUp = <LeaguePlayer>[];
     for (final group in state.groups) {
@@ -407,22 +414,44 @@ class LeagueEngine {
     }
 
     final participantCount = winners.length + runnersUp.length;
-    final roundName = _roundName(participantCount);
+    final fullBracket = _isPowerOfTwo(participantCount);
+    final targetCount = _highestPowerOfTwoAtMost(participantCount);
+    final fixtureCount = fullBracket
+        ? participantCount ~/ 2
+        : participantCount - targetCount;
+    final byeCount = participantCount - fixtureCount * 2;
+    final byePlayers = <LeaguePlayer>[];
+    final playPlayers = <LeaguePlayer>[];
+    if (fullBracket) {
+      playPlayers.addAll([...winners, ...runnersUp]);
+    } else {
+      final topSeeds = [...winners, ...runnersUp];
+      byePlayers.addAll(topSeeds.take(byeCount));
+      final byeIds = byePlayers.map((p) => p.id).toSet();
+      playPlayers
+        ..addAll(winners.where((p) => !byeIds.contains(p.id)))
+        ..addAll(
+          runnersUp.where((p) => !byeIds.contains(p.id)).toList().reversed,
+        );
+    }
+    final roundName = fullBracket ? _roundName(participantCount) : 'Play-off';
     final fixtures = <MatchFixture>[];
-    for (var i = 0; i < winners.length; i++) {
-      final runner = runnersUp[winners.length - 1 - i];
+    for (var i = 0; i < fixtureCount; i++) {
       fixtures.add(
         MatchFixture(
           id: 'ko_1_${i + 1}',
-          player1Id: winners[i].id,
-          player2Id: runner.id,
+          player1Id: playPlayers[i].id,
+          player2Id: playPlayers[playPlayers.length - 1 - i].id,
           stage: MatchStage.knockout,
           roundIndex: 1,
           roundName: roundName,
         ),
       );
     }
-    return fixtures;
+    return _KnockoutRoundPlan(
+      fixtures: fixtures,
+      byePlayerIds: byePlayers.map((p) => p.id).toList(),
+    );
   }
 
   LeagueState _advanceKnockoutIfNeeded(LeagueState state) {
@@ -437,22 +466,36 @@ class LeagueEngine {
     if (currentRound.length == 1) return state;
 
     final winners = currentRound.map(_winnerId).toList();
+    final hasFirstRoundByes =
+        currentRoundIndex == 1 && state.knockoutByePlayerIds.isNotEmpty;
+    final nextPlayers = hasFirstRoundByes
+        ? [...state.knockoutByePlayerIds, ...winners]
+        : winners;
     final nextRoundIndex = currentRoundIndex + 1;
-    final nextRoundName = _roundName(winners.length);
+    final nextRoundName = _roundName(nextPlayers.length);
     final nextFixtures = <MatchFixture>[];
-    for (var i = 0; i < winners.length; i += 2) {
+    for (var i = 0; i < nextPlayers.length ~/ 2; i++) {
+      final player1Id = hasFirstRoundByes ? nextPlayers[i] : nextPlayers[i * 2];
+      final player2Id = hasFirstRoundByes
+          ? nextPlayers[nextPlayers.length - 1 - i]
+          : nextPlayers[i * 2 + 1];
       nextFixtures.add(
         MatchFixture(
-          id: 'ko_${nextRoundIndex}_${(i ~/ 2) + 1}',
-          player1Id: winners[i],
-          player2Id: winners[i + 1],
+          id: 'ko_${nextRoundIndex}_${i + 1}',
+          player1Id: player1Id,
+          player2Id: player2Id,
           stage: MatchStage.knockout,
           roundIndex: nextRoundIndex,
           roundName: nextRoundName,
         ),
       );
     }
-    return state.copyWith(fixtures: [...state.fixtures, ...nextFixtures]);
+    return state.copyWith(
+      fixtures: [...state.fixtures, ...nextFixtures],
+      knockoutByePlayerIds: hasFirstRoundByes
+          ? const []
+          : state.knockoutByePlayerIds,
+    );
   }
 
   void _validateEditableFixture(LeagueState state, MatchFixture fixture) {
@@ -515,8 +558,26 @@ class LeagueEngine {
     return value > 0 && (value & (value - 1)) == 0;
   }
 
+  int _highestPowerOfTwoAtMost(int value) {
+    var result = 1;
+    while (result * 2 <= value) {
+      result *= 2;
+    }
+    return result;
+  }
+
   String _slug(String input) {
     final cleaned = input.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
     return cleaned.replaceAll(RegExp(r'^_+|_+$'), '');
   }
+}
+
+class _KnockoutRoundPlan {
+  const _KnockoutRoundPlan({
+    required this.fixtures,
+    required this.byePlayerIds,
+  });
+
+  final List<MatchFixture> fixtures;
+  final List<String> byePlayerIds;
 }

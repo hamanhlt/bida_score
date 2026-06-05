@@ -36,8 +36,8 @@ class LeagueResultScreen extends ConsumerWidget {
         return Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(
-            foregroundColor: Colors.white,
-            iconTheme: const IconThemeData(color: Colors.white),
+            foregroundColor: AppColors.textDark,
+            iconTheme: const IconThemeData(color: AppColors.textDark),
             title: const Text('Giải đấu'),
           ),
           body: Center(
@@ -59,8 +59,8 @@ class LeagueResultScreen extends ConsumerWidget {
       return Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          foregroundColor: Colors.white,
-          iconTheme: const IconThemeData(color: Colors.white),
+          foregroundColor: AppColors.textDark,
+          iconTheme: const IconThemeData(color: AppColors.textDark),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () =>
@@ -104,12 +104,12 @@ class LeagueResultScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         appBar: isFromHistory
             ? AppBar(
-                foregroundColor: Colors.white,
-                iconTheme: const IconThemeData(color: Colors.white),
+                foregroundColor: AppColors.textDark,
+                iconTheme: const IconThemeData(color: AppColors.textDark),
                 title: Text(
                   '${state.displayName} · ${_formatDate(state.finishedAt)}',
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.textDark,
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
                   ),

@@ -40,12 +40,12 @@ class MatchHistoryScreen extends ConsumerWidget {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          foregroundColor: Colors.white,
-          iconTheme: const IconThemeData(color: Colors.white),
+          foregroundColor: AppColors.textDark,
+          iconTheme: const IconThemeData(color: AppColors.textDark),
           title: const Text(
             'Lịch sử trận đấu',
             style: TextStyle(
-              color: Colors.white,
+              color: AppColors.textDark,
               fontWeight: FontWeight.w800,
               fontSize: 18,
             ),
@@ -72,8 +72,8 @@ class MatchHistoryScreen extends ConsumerWidget {
           bottom: TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white60,
+            labelColor: AppColors.textDark,
+            unselectedLabelColor: AppColors.textSubtle,
             indicatorColor: AppColors.accent,
             indicatorWeight: 3,
             tabs: [

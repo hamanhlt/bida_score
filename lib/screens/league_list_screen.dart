@@ -33,7 +33,7 @@ class LeagueListScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: const Icon(Icons.arrow_back, color: AppColors.textDark),
             onPressed: () => ref
                 .read(leagueControllerProvider.notifier)
                 .exitToModeSelection(),
@@ -41,7 +41,7 @@ class LeagueListScreen extends ConsumerWidget {
           title: const Text(
             'Giải đấu',
             style: TextStyle(
-              color: Colors.white,
+              color: AppColors.textDark,
               fontWeight: FontWeight.w800,
               fontSize: 18,
             ),
@@ -49,7 +49,10 @@ class LeagueListScreen extends ConsumerWidget {
           actions: [
             IconButton(
               tooltip: 'Lịch sử giải đã kết thúc',
-              icon: const Icon(Icons.history_rounded, color: Colors.white),
+              icon: const Icon(
+                Icons.history_rounded,
+                color: AppColors.textDark,
+              ),
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const LeagueHistoryScreen(),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/game_controller.dart';
+import '../theme/app_colors.dart';
 import '../widgets/round_history_view.dart';
 import '../widgets/table_background.dart';
 
@@ -22,12 +23,12 @@ class HistoryScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        foregroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.white),
+        foregroundColor: AppColors.textDark,
+        iconTheme: const IconThemeData(color: AppColors.textDark),
         title: const Text(
           'Lịch sử ghi điểm',
           style: TextStyle(
-            color: Colors.white,
+            color: AppColors.textDark,
             fontWeight: FontWeight.w800,
             fontSize: 18,
           ),
