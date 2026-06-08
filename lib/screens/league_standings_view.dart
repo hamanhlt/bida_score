@@ -4,7 +4,9 @@ import '../models/league_player.dart';
 import '../models/league_state.dart';
 import '../theme/app_colors.dart';
 
-/// Bảng xếp hạng league — table với cột: # · Tên · Trận · Thắng · GF · GA · HS · Điểm.
+/// Bảng xếp hạng league — table với cột: # · Tên · Trận · TS Ván · HS · Điểm.
+/// "TS Ván" = `goalsFor` (Tổng Số Ván Thắng). Tiebreaker order ở engine:
+/// Points → Head-to-head → GD → GoalsFor → alphabet.
 ///
 /// Players nhận từ ngoài (đã sort theo ranking trong engine). Dùng chung cho
 /// LeaguePlayScreen tab "Bảng xếp hạng" + LeagueResultScreen + LeagueHistory
@@ -162,9 +164,10 @@ class _StandingsHeader extends StatelessWidget {
           SizedBox(width: 28, child: _HeaderText('#', center: true)),
           SizedBox(width: 8),
           Expanded(child: _HeaderText('Người chơi')),
-          _HeaderCell('Trận', width: 36),
-          _HeaderCell('HS', width: 42),
-          _HeaderCell('Điểm', width: 54),
+          _HeaderCell('Trận', width: 34),
+          _HeaderCell('TS Ván', width: 44),
+          _HeaderCell('HS', width: 40),
+          _HeaderCell('Điểm', width: 50),
         ],
       ),
     );
@@ -265,10 +268,11 @@ class _StandingsRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          _StatCell(text: '${player.matchesPlayed}', width: 36),
+          _StatCell(text: '${player.matchesPlayed}', width: 34),
+          _StatCell(text: '${player.goalsFor}', width: 44),
           _StatCell(
             text: _formatSigned(player.goalDifference),
-            width: 42,
+            width: 40,
             color: player.goalDifference > 0
                 ? AppColors.shooter
                 : player.goalDifference < 0
@@ -361,7 +365,7 @@ class _PointsCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 54,
+      width: 50,
       child: Align(
         alignment: Alignment.center,
         child: Container(

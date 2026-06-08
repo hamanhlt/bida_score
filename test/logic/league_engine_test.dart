@@ -464,8 +464,15 @@ void main() {
 
       final finalFixture = finals.single;
       state = local.updateScore(state, finalFixture.id, 7, 4);
-      expect(state.knockoutComplete, isTrue);
+      // Vẫn còn trận tranh 3-4 chưa đá → knockoutComplete = false.
+      expect(state.knockoutComplete, isFalse);
       expect(state.championId, finalFixture.player1Id);
+      expect(() => local.finishTournament(state), throwsArgumentError);
+
+      final thirdPlace = state.thirdPlaceFixture;
+      expect(thirdPlace, isNotNull);
+      state = local.updateScore(state, thirdPlace!.id, 5, 2);
+      expect(state.knockoutComplete, isTrue);
 
       state = local.finishTournament(state);
       expect(state.status, LeagueStatus.finished);
@@ -501,6 +508,175 @@ void main() {
       expect(ranking[0].id, a);
       expect(ranking[1].id, b);
     });
+
+    test(
+      'head-to-head ưu tiên trước GD/GF khi đúng 2 player cùng điểm',
+      () {
+        // Scenario 4 player: A và B cùng 2 điểm, C và D cùng 1 điểm.
+        // A vs B: B thắng đối đầu. A đại thắng C, D → overall HS của A
+        // tốt hơn B nhiều. Nhưng H2H phải đưa B trên A.
+        var state = engine.startTournament(['A', 'B', 'C', 'D']);
+        final ids = {for (final p in state.players) p.name: p.id};
+        final a = ids['A']!,
+            b = ids['B']!,
+            c = ids['C']!,
+            d = ids['D']!;
+        void play(String x, String y, int sx, int sy) {
+          final f = state.fixtures.firstWhere(
+            (f) => {f.player1Id, f.player2Id}.containsAll({x, y}),
+          );
+          state = engine.updateScore(
+            state,
+            f.id,
+            f.player1Id == x ? sx : sy,
+            f.player1Id == x ? sy : sx,
+          );
+        }
+        // A: thắng C 10-0, thắng D 10-0, thua B 1-5 → 2 pts, GF=21, HS=+16.
+        // B: thắng A 5-1, thắng C 5-3, thua D 0-1 → 2 pts, GF=10, HS=+5.
+        // C: thua A, thua B, thắng D 1-0 → 1 pt.
+        // D: thua A, thắng B 1-0, thua C 0-1 → 1 pt.
+        play(a, c, 10, 0);
+        play(a, d, 10, 0);
+        play(b, a, 5, 1);
+        play(b, c, 5, 3);
+        play(b, d, 0, 1);
+        play(c, d, 1, 0);
+
+        final pA = state.players.firstWhere((p) => p.id == a);
+        final pB = state.players.firstWhere((p) => p.id == b);
+        expect(pA.points, 2);
+        expect(pB.points, 2);
+        // Overall HS: A=+16 cao hơn B=+5. Without H2H A sẽ xếp trên.
+        expect(pA.goalDifference, greaterThan(pB.goalDifference));
+
+        final rankOfB = state.players.indexWhere((p) => p.id == b);
+        final rankOfA = state.players.indexWhere((p) => p.id == a);
+        expect(
+          rankOfB,
+          lessThan(rankOfA),
+          reason: 'B thắng đối đầu A nên B phải xếp trên dù HS A tốt hơn',
+        );
+
+        // Tier C/D: D thắng B (1-0), C thắng D (1-0). H2H giữa C và D:
+        // C thắng D → C trên D.
+        final rankOfC = state.players.indexWhere((p) => p.id == c);
+        final rankOfD = state.players.indexWhere((p) => p.id == d);
+        expect(
+          rankOfC,
+          lessThan(rankOfD),
+          reason: 'C thắng D đối đầu nên C phải xếp trên',
+        );
+      },
+    );
+
+    test(
+      'H2H trong vòng bảng — chỉ tính trận giữa các player tied trong cùng bảng',
+      () {
+        final local = LeagueEngine(rng: Random(123));
+        var state = local.startTournament(
+          const [],
+          manualGroups: const [
+            ['A1', 'A2', 'A3'],
+            ['B1', 'B2', 'B3'],
+          ],
+        );
+        // Bảng A: A1 thắng A2 5-1, A1 thua A3 0-9, A2 thắng A3 3-0.
+        // A1, A2, A3 đều 1 điểm. H2H pairwise wins: mỗi người 1W-1L
+        // (Condorcet cycle) → mini-points đều =1 → fall through xuống
+        // overall GD. Overall trùng tier (chỉ gặp nhau trong nhóm) →
+        // A3 GD=+6, A2 GD=-1, A1 GD=-5 → A3 → A2 → A1.
+        final a1 =
+            state.players.firstWhere((p) => p.name == 'A1').id;
+        final a2 =
+            state.players.firstWhere((p) => p.name == 'A2').id;
+        final a3 =
+            state.players.firstWhere((p) => p.name == 'A3').id;
+        for (final f in state.groupFixtures.where(
+          (f) =>
+              {f.player1Id, f.player2Id}.contains(a1) ||
+              {f.player1Id, f.player2Id}.contains(a2) ||
+              {f.player1Id, f.player2Id}.contains(a3),
+        )) {
+          final ids = {f.player1Id, f.player2Id};
+          int s1 = 0, s2 = 0;
+          if (ids.containsAll({a1, a2})) {
+            s1 = f.player1Id == a1 ? 5 : 1;
+            s2 = f.player1Id == a1 ? 1 : 5;
+          } else if (ids.containsAll({a1, a3})) {
+            s1 = f.player1Id == a3 ? 9 : 0;
+            s2 = f.player1Id == a3 ? 0 : 9;
+          } else if (ids.containsAll({a2, a3})) {
+            s1 = f.player1Id == a2 ? 3 : 0;
+            s2 = f.player1Id == a2 ? 0 : 3;
+          }
+          state = local.updateScore(state, f.id, s1, s2);
+        }
+        // Bảng B: bỏ trống, không cần.
+        final groupA = state.groups[0];
+        final ranking = state.playersInGroup(groupA);
+        // Expect: A3 → A2 → A1 dựa trên mini-GD.
+        expect(ranking[0].id, a3);
+        expect(ranking[1].id, a2);
+        expect(ranking[2].id, a1);
+      },
+    );
+
+    test(
+      '3-cycle tied: Condorcet cycle → fall back overall HS/GF (không '
+      'dùng mini-GD)',
+      () {
+        // Reproduce screenshot: 4 player vòng bảng.
+        // Tất cả 3 player tied 2 điểm thắng/thua chéo lẫn nhau (cycle).
+        // Mini-GD sẽ ưu tiên Việt-Phú Đô (đại thắng CAV 10-1) nhưng spec
+        // mới: cycle → fall xuống overall. Việt Anh có overall GF cao hơn
+        // nhờ thắng đậm A Dũng 15-3 → Việt Anh lên #1.
+        final local = LeagueEngine(rng: Random(99));
+        var state = local.startTournament(
+          const [],
+          manualGroups: const [
+            ['Việt-Phú Đô', 'Việt Anh', 'Công An Viên', 'A Dũng TST'],
+            ['HIẾU', 'Lê Văn Chương'],
+          ],
+        );
+        final ids = {for (final p in state.players) p.name: p.id};
+        final vpd = ids['Việt-Phú Đô']!;
+        final va = ids['Việt Anh']!;
+        final cav = ids['Công An Viên']!;
+        final adt = ids['A Dũng TST']!;
+        void play(String x, String y, int sx, int sy) {
+          final f = state.groupFixtures.firstWhere(
+            (f) => {f.player1Id, f.player2Id}.containsAll({x, y}),
+          );
+          state = local.updateScore(
+            state,
+            f.id,
+            f.player1Id == x ? sx : sy,
+            f.player1Id == x ? sy : sx,
+          );
+        }
+        // Đúng theo screenshot.
+        play(vpd, adt, 3, 2);
+        play(cav, adt, 1, 0);
+        play(va, vpd, 5, 4);
+        play(va, cav, 2, 6);
+        play(vpd, cav, 10, 1);
+        play(va, adt, 15, 3);
+
+        // Tất cả 3 tied 2 điểm với 1 win 1 loss trong tier (cycle).
+        final groupA = state.groups[0];
+        final ranking = state.playersInGroup(groupA);
+        // Spec mới: cycle → overall HS → overall GF.
+        // Việt Anh: HS=+9, GF=22 → #1.
+        // Việt-Phú Đô: HS=+9, GF=17 → #2.
+        // CAV: HS=-4 → #3.
+        // A Dũng: 0 đ → #4.
+        expect(ranking[0].id, va);
+        expect(ranking[1].id, vpd);
+        expect(ranking[2].id, cav);
+        expect(ranking[3].id, adt);
+      },
+    );
 
     test('all-tied scenario: 3 player 0-0 toàn bộ → sort theo alphabet', () {
       var state = engine.startTournament(['Charlie', 'Alice', 'Bob']);
@@ -646,5 +822,212 @@ void main() {
         expect(a.id, isNot(b.id));
       },
     );
+
+    // ─────── Manual groups (user-defined bảng) ───────
+
+    test('startTournament với manualGroups sinh bảng đúng layout', () {
+      final local = LeagueEngine(rng: Random(7));
+      final state = local.startTournament(
+        const [],
+        tournamentName: 'Giải tay',
+        manualGroups: const [
+          ['A1', 'A2', 'A3', 'A4'],
+          ['B1', 'B2', 'B3', 'B4'],
+        ],
+      );
+      expect(state.usesGroupStage, isTrue);
+      expect(state.groups, hasLength(2));
+      expect(state.groups[0].name, 'Bảng A');
+      expect(state.groups[1].name, 'Bảng B');
+      expect(state.groups[0].playerIds, hasLength(4));
+      expect(state.groups[1].playerIds, hasLength(4));
+      expect(state.groupFixtures, hasLength(12));
+      expect(state.knockoutFixtures, isEmpty);
+    });
+
+    test('manualGroups: bảng có size khác nhau', () {
+      final local = LeagueEngine(rng: Random(7));
+      final state = local.startTournament(
+        const [],
+        manualGroups: const [
+          ['A1', 'A2', 'A3'],
+          ['B1', 'B2', 'B3'],
+          ['C1', 'C2', 'C3', 'C4'],
+        ],
+      );
+      expect(state.groups, hasLength(3));
+      expect(state.groups[2].playerIds, hasLength(4));
+      expect(state.groupFixtures, hasLength(12));
+    });
+
+    test('manualGroups reject: <2 bảng', () {
+      final local = LeagueEngine(rng: Random(7));
+      expect(
+        () => local.startTournament(
+          const [],
+          manualGroups: const [
+            ['A1', 'A2', 'A3'],
+          ],
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('manualGroups reject: bảng có <2 người', () {
+      final local = LeagueEngine(rng: Random(7));
+      expect(
+        () => local.startTournament(
+          const [],
+          manualGroups: const [
+            ['A1'],
+            ['B1', 'B2'],
+          ],
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('manualGroups reject: tên trùng xuyên bảng', () {
+      final local = LeagueEngine(rng: Random(7));
+      expect(
+        () => local.startTournament(
+          const [],
+          manualGroups: const [
+            ['X', 'A2'],
+            ['X', 'B2'],
+          ],
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    // ─────── 3rd-place playoff ───────
+
+    test('semifinals advance sinh thêm trận tranh 3-4', () {
+      final local = LeagueEngine(rng: Random(31));
+      var state = local.startTournament(
+        const [],
+        manualGroups: const [
+          ['A1', 'A2', 'A3', 'A4'],
+          ['B1', 'B2', 'B3', 'B4'],
+        ],
+      );
+      // Đá hết vòng bảng — A1, A2 lên top bảng A; B1, B2 top bảng B.
+      for (final group in state.groups) {
+        final ranking = {
+          for (var i = 0; i < group.playerIds.length; i++)
+            group.playerIds[i]: i,
+        };
+        for (final f
+            in state.groupFixtures.where((f) => f.groupId == group.id)) {
+          state = local.updateScore(
+            state,
+            f.id,
+            ranking[f.player1Id]! < ranking[f.player2Id]! ? 3 : 0,
+            ranking[f.player1Id]! < ranking[f.player2Id]! ? 0 : 3,
+          );
+        }
+      }
+      state = local.startKnockout(state);
+      expect(state.knockoutFixtures, hasLength(2));
+      expect(state.thirdPlaceFixture, isNull);
+
+      final semiIds = state.knockoutFixtures.map((f) => f.id).toList();
+      for (final fid in semiIds) {
+        state = local.updateScore(state, fid, 5, 2);
+      }
+      expect(state.knockoutFixtures, hasLength(4));
+      expect(state.thirdPlaceFixture, isNotNull);
+      expect(state.finalFixture, isNotNull);
+      expect(
+        state.thirdPlaceFixture!.roundIndex,
+        state.finalFixture!.roundIndex,
+      );
+      // Tính losers từ state CUỐI (đã update score), không từ semis stale.
+      final playedSemis = state.knockoutFixtures
+          .where((f) => f.roundName == 'Bán kết')
+          .toList();
+      final loserIds = playedSemis
+          .map((f) => f.score1 > f.score2 ? f.player2Id : f.player1Id)
+          .toSet();
+      expect(
+        {
+          state.thirdPlaceFixture!.player1Id,
+          state.thirdPlaceFixture!.player2Id,
+        },
+        loserIds,
+      );
+    });
+
+    test('3rd-place getters + knockoutComplete cần cả 2 trận đá xong', () {
+      final local = LeagueEngine(rng: Random(33));
+      var state = local.startTournament(
+        const [],
+        manualGroups: const [
+          ['A1', 'A2', 'A3'],
+          ['B1', 'B2', 'B3'],
+        ],
+      );
+      for (final group in state.groups) {
+        final ranking = {
+          for (var i = 0; i < group.playerIds.length; i++)
+            group.playerIds[i]: i,
+        };
+        for (final f
+            in state.groupFixtures.where((f) => f.groupId == group.id)) {
+          state = local.updateScore(
+            state,
+            f.id,
+            ranking[f.player1Id]! < ranking[f.player2Id]! ? 3 : 0,
+            ranking[f.player1Id]! < ranking[f.player2Id]! ? 0 : 3,
+          );
+        }
+      }
+      state = local.startKnockout(state);
+      for (final f in state.knockoutFixtures.toList()) {
+        state = local.updateScore(state, f.id, 5, 2);
+      }
+      final third = state.thirdPlaceFixture!;
+      final fin = state.finalFixture!;
+      state = local.updateScore(state, fin.id, 7, 4);
+      expect(state.knockoutComplete, isFalse);
+      expect(state.championId, isNotNull);
+      expect(state.thirdPlaceWinnerId, isNull);
+
+      state = local.updateScore(state, third.id, 6, 3);
+      expect(state.knockoutComplete, isTrue);
+      expect(state.thirdPlaceWinnerId, third.player1Id);
+      expect(state.fourthPlaceId, third.player2Id);
+    });
+
+    test('finalFixture skip trận tranh 3-4 khi tính chung kết', () {
+      final state = LeagueState(
+        id: 'lg_test',
+        status: LeagueStatus.inProgress,
+        phase: LeaguePhase.knockout,
+        players: const [],
+        groups: const [],
+        fixtures: const [
+          MatchFixture(
+            id: 'ko_2_1',
+            player1Id: 'a',
+            player2Id: 'b',
+            stage: MatchStage.knockout,
+            roundIndex: 2,
+            roundName: 'Chung kết',
+          ),
+          MatchFixture(
+            id: 'ko_2_3rd',
+            player1Id: 'c',
+            player2Id: 'd',
+            stage: MatchStage.knockout,
+            roundIndex: 2,
+            roundName: 'Tranh 3-4',
+          ),
+        ],
+      );
+      expect(state.finalFixture?.id, 'ko_2_1');
+      expect(state.thirdPlaceFixture?.id, 'ko_2_3rd');
+    });
   });
 }

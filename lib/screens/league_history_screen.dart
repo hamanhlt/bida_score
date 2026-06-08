@@ -20,12 +20,13 @@ class LeagueHistoryScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        foregroundColor: AppColors.textDark,
-        iconTheme: const IconThemeData(color: AppColors.textDark),
+        backgroundColor: AppColors.primaryDark,
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
           'Lịch sử giải đấu',
           style: TextStyle(
-            color: AppColors.textDark,
+            color: Colors.white,
             fontWeight: FontWeight.w800,
             fontSize: 18,
           ),

@@ -42,7 +42,11 @@ class LeagueController extends Notifier<LeagueState> {
     if (currentId != null && currentId.isNotEmpty) {
       final seedList = ref.read(activeLeaguesSeedProvider) ?? const [];
       for (final l in seedList) {
-        if (l.id == currentId) return l;
+        if (l.id == currentId) {
+          // Re-sort theo logic engine hiện tại (tiebreaker có thể đổi
+          // giữa các phiên bản app — state trên đĩa giữ thứ tự cũ).
+          return _engine.recalculate(l);
+        }
       }
       // Session trỏ tới giải không còn trong active list (vd user kill
       // app ở LeagueResultScreen sau finish, hoặc data hỏng). Defer
@@ -62,11 +66,13 @@ class LeagueController extends Notifier<LeagueState> {
     List<String> names, {
     String tournamentName = '',
     int? groupSize,
+    List<List<String>>? manualGroups,
   }) {
     state = _engine.startTournament(
       names,
       tournamentName: tournamentName,
       groupSize: groupSize,
+      manualGroups: manualGroups,
     );
     ref.read(leagueSessionControllerProvider.notifier).openCurrent(state.id);
   }

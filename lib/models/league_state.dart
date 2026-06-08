@@ -75,9 +75,18 @@ class LeagueState {
 
   bool get knockoutComplete {
     final finalFixture = this.finalFixture;
-    return finalFixture != null &&
-        finalFixture.isPlayed &&
-        finalFixture.score1 != finalFixture.score2;
+    if (finalFixture == null ||
+        !finalFixture.isPlayed ||
+        finalFixture.score1 == finalFixture.score2) {
+      return false;
+    }
+    // Nếu có trận tranh 3-4 → phải đá xong cả 2 mới coi knockout hoàn tất.
+    final third = thirdPlaceFixture;
+    if (third != null &&
+        (!third.isPlayed || third.score1 == third.score2)) {
+      return false;
+    }
+    return true;
   }
 
   String get phaseLabel {
@@ -91,14 +100,43 @@ class LeagueState {
 
   MatchFixture? get finalFixture {
     if (knockoutFixtures.isEmpty) return null;
-    final sorted = [...knockoutFixtures]
-      ..sort((a, b) => b.roundIndex.compareTo(a.roundIndex));
-    final highestRound = sorted.first.roundIndex;
-    final candidates = sorted
+    // Bỏ qua trận tranh 3-4 (sống cùng roundIndex với chung kết).
+    final candidates = knockoutFixtures
+        .where((f) => f.roundName != _thirdPlaceRoundName)
+        .toList();
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) => b.roundIndex.compareTo(a.roundIndex));
+    final highestRound = candidates.first.roundIndex;
+    final atHighest = candidates
         .where((f) => f.roundIndex == highestRound)
         .toList();
-    return candidates.length == 1 ? candidates.first : null;
+    return atHighest.length == 1 ? atHighest.first : null;
   }
+
+  /// Trận tranh hạng 3 (nếu có) — sinh ra khi bán kết kết thúc.
+  MatchFixture? get thirdPlaceFixture {
+    for (final f in knockoutFixtures) {
+      if (f.roundName == _thirdPlaceRoundName) return f;
+    }
+    return null;
+  }
+
+  String? get thirdPlaceWinnerId {
+    final f = thirdPlaceFixture;
+    if (f == null || !f.isPlayed || f.score1 == f.score2) return null;
+    return f.score1 > f.score2 ? f.player1Id : f.player2Id;
+  }
+
+  String? get fourthPlaceId {
+    final f = thirdPlaceFixture;
+    if (f == null || !f.isPlayed || f.score1 == f.score2) return null;
+    return f.score1 > f.score2 ? f.player2Id : f.player1Id;
+  }
+
+  LeaguePlayer? get thirdPlacePlayer => playerById(thirdPlaceWinnerId);
+  LeaguePlayer? get fourthPlacePlayer => playerById(fourthPlaceId);
+
+  static const _thirdPlaceRoundName = 'Tranh 3-4';
 
   String? get championId {
     final f = finalFixture;

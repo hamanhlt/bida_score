@@ -36,8 +36,9 @@ class LeagueResultScreen extends ConsumerWidget {
         return Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(
-            foregroundColor: AppColors.textDark,
-            iconTheme: const IconThemeData(color: AppColors.textDark),
+            backgroundColor: AppColors.primaryDark,
+            foregroundColor: Colors.white,
+            iconTheme: const IconThemeData(color: Colors.white),
             title: const Text('Giải đấu'),
           ),
           body: Center(
@@ -59,8 +60,9 @@ class LeagueResultScreen extends ConsumerWidget {
       return Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          foregroundColor: AppColors.textDark,
-          iconTheme: const IconThemeData(color: AppColors.textDark),
+          backgroundColor: AppColors.primaryDark,
+          foregroundColor: Colors.white,
+          iconTheme: const IconThemeData(color: Colors.white),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () =>
@@ -104,12 +106,13 @@ class LeagueResultScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         appBar: isFromHistory
             ? AppBar(
-                foregroundColor: AppColors.textDark,
-                iconTheme: const IconThemeData(color: AppColors.textDark),
+                backgroundColor: AppColors.primaryDark,
+                foregroundColor: Colors.white,
+                iconTheme: const IconThemeData(color: Colors.white),
                 title: Text(
                   '${state.displayName} · ${_formatDate(state.finishedAt)}',
                   style: const TextStyle(
-                    color: AppColors.textDark,
+                    color: Colors.white,
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
                   ),
@@ -312,6 +315,17 @@ class _KnockoutSummary extends StatelessWidget {
 
   final LeagueState state;
 
+  static const _thirdPlaceLabel = 'Tranh 3-4';
+
+  List<List<MatchFixture>> _splitByRoundName(List<MatchFixture> fixtures) {
+    final main = fixtures.where((f) => f.roundName != _thirdPlaceLabel).toList();
+    final third = fixtures.where((f) => f.roundName == _thirdPlaceLabel).toList();
+    return [
+      if (main.isNotEmpty) main,
+      if (third.isNotEmpty) third,
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     if (state.knockoutFixtures.isEmpty) return const SizedBox.shrink();
@@ -336,23 +350,26 @@ class _KnockoutSummary extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         for (final round in rounds) ...[
-          Text(
-            byRound[round]!.first.roundName,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: AppColors.textBody,
-              fontWeight: FontWeight.w800,
+          // Tách 'Tranh 3-4' thành section riêng, chung kết trước.
+          for (final section in _splitByRoundName(byRound[round]!)) ...[
+            Text(
+              section.first.roundName,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: AppColors.textBody,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          for (final fixture in byRound[round]!)
-            _KnockoutResultRow(
-              p1Name: nameById[fixture.player1Id] ?? '?',
-              p2Name: nameById[fixture.player2Id] ?? '?',
-              score: fixture.isPlayed
-                  ? '${fixture.score1} – ${fixture.score2}'
-                  : 'Chưa đấu',
-            ),
-          const SizedBox(height: 10),
+            const SizedBox(height: 6),
+            for (final fixture in section)
+              _KnockoutResultRow(
+                p1Name: nameById[fixture.player1Id] ?? '?',
+                p2Name: nameById[fixture.player2Id] ?? '?',
+                score: fixture.isPlayed
+                    ? '${fixture.score1} – ${fixture.score2}'
+                    : 'Chưa đấu',
+              ),
+            const SizedBox(height: 10),
+          ],
         ],
       ],
     );

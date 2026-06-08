@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/league_state.dart';
 import '../services/active_leagues_storage.dart';
+import 'league_controller.dart';
 
 /// Seed cho [activeLeaguesControllerProvider] — preload list giải đang
 /// chơi từ disk, override ở `main.dart`.
@@ -22,7 +23,13 @@ class ActiveLeaguesController extends Notifier<List<LeagueState>> {
     listenSelf((_, next) {
       unawaited(ActiveLeaguesStorage.saveAll(next));
     });
-    return ref.read(activeLeaguesSeedProvider) ?? const <LeagueState>[];
+    final seed = ref.read(activeLeaguesSeedProvider) ?? const <LeagueState>[];
+    if (seed.isEmpty) return seed;
+    // Re-sort xếp hạng theo logic engine hiện tại. Cần thiết khi tiebreaker
+    // thay đổi: state cũ trên đĩa giữ thứ tự players cũ, không tự refresh
+    // nếu user không nhập tỷ số mới.
+    final engine = ref.read(leagueEngineProvider);
+    return [for (final l in seed) engine.recalculate(l)];
   }
 
   /// Insert mới (đầu list, mới nhất trước) hoặc update tại chỗ theo id.

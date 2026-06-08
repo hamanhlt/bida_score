@@ -6,6 +6,7 @@ import '../models/league_state.dart';
 import '../models/match_fixture.dart';
 import '../providers/league_controller.dart';
 import '../theme/app_colors.dart';
+import '../widgets/player_colors.dart';
 import '../widgets/table_background.dart';
 import 'league_standings_view.dart';
 
@@ -38,8 +39,9 @@ class LeaguePlayScreen extends ConsumerWidget {
         child: Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(
-            foregroundColor: AppColors.textDark,
-            iconTheme: const IconThemeData(color: AppColors.textDark),
+            backgroundColor: AppColors.primaryDark,
+            foregroundColor: Colors.white,
+            iconTheme: const IconThemeData(color: Colors.white),
             // Back về danh sách giải (active list giữ nguyên, giải vẫn ở đó).
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
@@ -50,7 +52,7 @@ class LeaguePlayScreen extends ConsumerWidget {
               '${state.displayName} · ${state.phaseLabel} · '
               '${state.matchesPlayed}/${state.matchesTotal} trận',
               style: const TextStyle(
-                color: AppColors.textDark,
+                color: Colors.white,
                 fontWeight: FontWeight.w800,
                 fontSize: 16,
               ),
@@ -77,8 +79,8 @@ class LeaguePlayScreen extends ConsumerWidget {
               ),
             ],
             bottom: const TabBar(
-              labelColor: AppColors.textDark,
-              unselectedLabelColor: AppColors.textSubtle,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white70,
               indicatorColor: AppColors.accent,
               indicatorWeight: 3,
               tabs: [
@@ -274,12 +276,14 @@ class _FixturesTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Map id → tên cho lookup nhanh khi render fixture.
     final nameById = {for (final p in state.players) p.id: p.name};
+    // Mỗi người chơi 1 màu chữ ổn định (sort theo id) — easier scan.
+    final colorById = assignPlayerColors(state.players.map((p) => p.id));
 
     if (state.usesGroupStage) {
       if (state.phase == LeaguePhase.groupStage) {
-        return _buildGroupStage(context, ref, nameById);
+        return _buildGroupStage(context, ref, nameById, colorById);
       }
-      return _buildKnockout(context, ref, nameById);
+      return _buildKnockout(context, ref, nameById, colorById);
     }
 
     return ListView.builder(
@@ -294,6 +298,8 @@ class _FixturesTab extends ConsumerWidget {
             fixture: f,
             p1Name: nameById[f.player1Id] ?? '?',
             p2Name: nameById[f.player2Id] ?? '?',
+            p1Color: colorById[f.player1Id] ?? AppColors.primaryDark,
+            p2Color: colorById[f.player2Id] ?? AppColors.primaryDark,
             onTap: () => _openScoreSheet(context, ref, f, nameById),
           ),
         );
@@ -305,6 +311,7 @@ class _FixturesTab extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     Map<String, String> nameById,
+    Map<String, Color> colorById,
   ) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
@@ -336,6 +343,10 @@ class _FixturesTab extends ConsumerWidget {
                 fixture: entry.value,
                 p1Name: nameById[entry.value.player1Id] ?? '?',
                 p2Name: nameById[entry.value.player2Id] ?? '?',
+                p1Color:
+                    colorById[entry.value.player1Id] ?? AppColors.primaryDark,
+                p2Color:
+                    colorById[entry.value.player2Id] ?? AppColors.primaryDark,
                 onTap: () =>
                     _openScoreSheet(context, ref, entry.value, nameById),
               ),
@@ -350,7 +361,10 @@ class _FixturesTab extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     Map<String, String> nameById,
+    Map<String, Color> colorById,
   ) {
+    // Group theo (roundIndex, roundName) — vì trận tranh 3-4 sống cùng
+    // roundIndex với chung kết nhưng nên hiện section header riêng.
     final byRound = <int, List<MatchFixture>>{};
     for (final f in state.knockoutFixtures) {
       byRound.putIfAbsent(f.roundIndex, () => []).add(f);
@@ -364,30 +378,70 @@ class _FixturesTab extends ConsumerWidget {
           subtitle: 'Top 2 mỗi bảng đã vào nhánh knockout.',
         ),
         const SizedBox(height: 12),
-        for (final round in rounds) ...[
-          _SectionHeader(
-            title: byRound[round]!.first.roundName,
-            subtitle:
-                '${byRound[round]!.where((f) => f.isPlayed).length}/'
-                '${byRound[round]!.length} trận',
+        for (final round in rounds)
+          ..._buildKnockoutRoundSections(
+            context,
+            ref,
+            byRound[round]!,
+            nameById,
+            colorById,
           ),
-          for (final entry in byRound[round]!.asMap().entries)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _FixtureCard(
-                index: entry.key + 1,
-                fixture: entry.value,
-                p1Name: nameById[entry.value.player1Id] ?? '?',
-                p2Name: nameById[entry.value.player2Id] ?? '?',
-                onTap: () =>
-                    _openScoreSheet(context, ref, entry.value, nameById),
-              ),
-            ),
-          const SizedBox(height: 6),
-        ],
       ],
     );
   }
+
+  List<Widget> _buildKnockoutRoundSections(
+    BuildContext context,
+    WidgetRef ref,
+    List<MatchFixture> roundFixtures,
+    Map<String, String> nameById,
+    Map<String, Color> colorById,
+  ) {
+    // Tách "tranh 3-4" thành section riêng, chung kết trước.
+    final main = roundFixtures
+        .where((f) => f.roundName != _thirdPlaceLabel)
+        .toList();
+    final third = roundFixtures
+        .where((f) => f.roundName == _thirdPlaceLabel)
+        .toList();
+    final sections = <List<MatchFixture>>[
+      if (main.isNotEmpty) main,
+      if (third.isNotEmpty) third,
+    ];
+    final widgets = <Widget>[];
+    for (final section in sections) {
+      widgets.add(
+        _SectionHeader(
+          title: section.first.roundName,
+          subtitle:
+              '${section.where((f) => f.isPlayed).length}/${section.length} trận',
+        ),
+      );
+      for (final entry in section.asMap().entries) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _FixtureCard(
+              index: entry.key + 1,
+              fixture: entry.value,
+              p1Name: nameById[entry.value.player1Id] ?? '?',
+              p2Name: nameById[entry.value.player2Id] ?? '?',
+              p1Color:
+                  colorById[entry.value.player1Id] ?? AppColors.primaryDark,
+              p2Color:
+                  colorById[entry.value.player2Id] ?? AppColors.primaryDark,
+              onTap: () =>
+                  _openScoreSheet(context, ref, entry.value, nameById),
+            ),
+          ),
+        );
+      }
+      widgets.add(const SizedBox(height: 6));
+    }
+    return widgets;
+  }
+
+  static const _thirdPlaceLabel = 'Tranh 3-4';
 
   Future<void> _openScoreSheet(
     BuildContext context,
@@ -580,6 +634,8 @@ class _FixtureCard extends StatelessWidget {
     required this.fixture,
     required this.p1Name,
     required this.p2Name,
+    required this.p1Color,
+    required this.p2Color,
     required this.onTap,
   });
 
@@ -587,6 +643,8 @@ class _FixtureCard extends StatelessWidget {
   final MatchFixture fixture;
   final String p1Name;
   final String p2Name;
+  final Color p1Color;
+  final Color p2Color;
   final VoidCallback onTap;
 
   @override
@@ -627,9 +685,9 @@ class _FixtureCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _NameRow(name: p1Name, isWinner: p1Win),
+                    _NameRow(name: p1Name, color: p1Color, isWinner: p1Win),
                     const SizedBox(height: 4),
-                    _NameRow(name: p2Name, isWinner: p2Win),
+                    _NameRow(name: p2Name, color: p2Color, isWinner: p2Win),
                   ],
                 ),
               ),
@@ -687,26 +745,40 @@ class _FixtureCard extends StatelessWidget {
 }
 
 class _NameRow extends StatelessWidget {
-  const _NameRow({required this.name, required this.isWinner});
+  const _NameRow({
+    required this.name,
+    required this.color,
+    required this.isWinner,
+  });
 
   final String name;
+  final Color color;
   final bool isWinner;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(
-          isWinner ? Icons.emoji_events_rounded : Icons.circle_outlined,
-          size: 14,
-          color: isWinner ? AppColors.accent : AppColors.textSubtle,
+        // Marker tròn cùng màu chữ → đỡ phụ thuộc vào winner state.
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
+        if (isWinner) ...[
+          const SizedBox(width: 4),
+          const Icon(
+            Icons.emoji_events_rounded,
+            size: 14,
+            color: AppColors.accent,
+          ),
+        ],
         const SizedBox(width: 6),
         Flexible(
           child: Text(
             name,
             style: TextStyle(
-              color: AppColors.primaryDark,
+              color: color,
               fontWeight: isWinner ? FontWeight.w900 : FontWeight.w700,
               fontSize: 14,
             ),

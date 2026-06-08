@@ -65,15 +65,35 @@ class LeagueEngine {
   /// 1 lần) hoặc vòng bảng + knockout. Trả `LeagueState` với
   /// `status = inProgress`.
   ///
+  /// 3 chế độ:
+  /// - [manualGroups] != null: bảng chia tay (mỗi sublist = 1 bảng theo
+  ///   thứ tự). Tên trong cùng sublist và xuyên sublist đều phải unique.
+  /// - [groupSize] != null: auto-distribute N người vào các bảng đều nhau.
+  /// - Không có hai cái trên: round-robin (mỗi người gặp nhau 1 lần).
+  ///
   /// Throw [ArgumentError] khi:
   /// - Số người chơi < [_minPlayers] hoặc > [_maxPlayers].
   /// - Có tên trùng (case-insensitive sau trim).
   /// - [groupSize] không tạo được tối thiểu 2 bảng, mỗi bảng đủ top 2.
+  /// - [manualGroups] có bảng < 2 người hoặc tổng số bảng < 2.
   LeagueState startTournament(
     List<String> rawNames, {
     String tournamentName = '',
     int? groupSize,
+    List<List<String>>? manualGroups,
   }) {
+    final startedAt = DateTime.now();
+    final tournamentDisplayName = tournamentName.trim();
+
+    // Manual groups: bypass flat-names logic — payload chia bảng đã sẵn.
+    if (manualGroups != null) {
+      return _startManualGroupTournament(
+        manualGroups,
+        startedAt,
+        tournamentDisplayName,
+      );
+    }
+
     final names = rawNames
         .map((n) => n.trim())
         .where((n) => n.isNotEmpty)
@@ -95,13 +115,11 @@ class LeagueEngine {
         LeaguePlayer(id: 'lp_${i + 1}_${_slug(names[i])}', name: names[i]),
     ];
 
-    final startedAt = DateTime.now();
-    final name = tournamentName.trim();
     if (groupSize == null) {
       final fixtures = _generateFixtures(players);
       return LeagueState(
         id: _generateLeagueId(startedAt),
-        name: name,
+        name: tournamentDisplayName,
         status: LeagueStatus.inProgress,
         phase: LeaguePhase.roundRobin,
         players: _sortByRanking(players),
@@ -115,10 +133,77 @@ class LeagueEngine {
     final fixtures = _generateGroupFixtures(groups, players);
     return LeagueState(
       id: _generateLeagueId(startedAt),
-      name: name,
+      name: tournamentDisplayName,
       status: LeagueStatus.inProgress,
       phase: LeaguePhase.groupStage,
       groupSize: groupSize,
+      players: _sortByRanking(players),
+      groups: groups,
+      fixtures: fixtures,
+      startedAt: startedAt,
+    );
+  }
+
+  LeagueState _startManualGroupTournament(
+    List<List<String>> rawGroups,
+    DateTime startedAt,
+    String tournamentDisplayName,
+  ) {
+    // Trim + lọc rỗng per-group.
+    final trimmedGroups = rawGroups
+        .map((g) => g
+            .map((n) => n.trim())
+            .where((n) => n.isNotEmpty)
+            .toList(growable: false))
+        .toList(growable: false);
+
+    if (trimmedGroups.length < 2) {
+      throw ArgumentError('Cần ít nhất 2 bảng.');
+    }
+    if (trimmedGroups.any((g) => g.length < 2)) {
+      throw ArgumentError(
+        'Mỗi bảng cần ít nhất 2 người để lấy top 2 vào knockout.',
+      );
+    }
+    final allNames = [for (final g in trimmedGroups) ...g];
+    if (allNames.length < _minPlayers) {
+      throw ArgumentError('Giải đấu cần ít nhất $_minPlayers người chơi.');
+    }
+    if (allNames.length > _maxPlayers) {
+      throw ArgumentError('Giải đấu hỗ trợ tối đa $_maxPlayers người chơi.');
+    }
+    final lower = allNames.map((n) => n.toLowerCase()).toSet();
+    if (lower.length != allNames.length) {
+      throw ArgumentError('Tên người chơi phải khác nhau.');
+    }
+
+    // Sinh players + map từng tên về player id để xếp vào group.
+    final players = <LeaguePlayer>[
+      for (var i = 0; i < allNames.length; i++)
+        LeaguePlayer(id: 'lp_${i + 1}_${_slug(allNames[i])}', name: allNames[i]),
+    ];
+    var cursor = 0;
+    final groups = <LeagueGroup>[];
+    for (var gi = 0; gi < trimmedGroups.length; gi++) {
+      final size = trimmedGroups[gi].length;
+      final slice = players.skip(cursor).take(size).toList();
+      cursor += size;
+      groups.add(
+        LeagueGroup(
+          id: 'grp_${gi + 1}',
+          name: 'Bảng ${_groupLetter(gi)}',
+          playerIds: slice.map((p) => p.id).toList(),
+        ),
+      );
+    }
+
+    final fixtures = _generateGroupFixtures(groups, players);
+    return LeagueState(
+      id: _generateLeagueId(startedAt),
+      name: tournamentDisplayName,
+      status: LeagueStatus.inProgress,
+      phase: LeaguePhase.groupStage,
+      groupSize: 0, // manual: kích thước không đồng đều
       players: _sortByRanking(players),
       groups: groups,
       fixtures: fixtures,
@@ -251,6 +336,17 @@ class LeagueEngine {
 
   LeagueState resetTournament() => LeagueState.initial();
 
+  /// Tính lại stats + thứ hạng cho state hiện có. Dùng khi load từ disk
+  /// để áp dụng tiebreaker mới nhất (nếu engine đổi). KHÔNG đụng fixtures,
+  /// chỉ sort lại `state.players` và refresh stats.
+  LeagueState recalculate(LeagueState state) {
+    if (state.fixtures.isEmpty || state.players.isEmpty) return state;
+    if (state.usesGroupStage) {
+      return _syncGroupKnockout(state);
+    }
+    return _recalculateLeaderboard(state);
+  }
+
   // ────────────────────────── internals ──────────────────────────
 
   void _validateGroupSize(int playerCount, int groupSize) {
@@ -374,7 +470,10 @@ class LeagueEngine {
       );
     }
 
-    final ranked = _sortByRanking(byId.values.toList());
+    final ranked = _sortByRanking(
+      byId.values.toList(),
+      fixtures: fixtures ?? state.fixtures,
+    );
     return state.copyWith(players: ranked);
   }
 
@@ -459,8 +558,15 @@ class LeagueEngine {
     final currentRoundIndex = state.knockoutFixtures
         .map((f) => f.roundIndex)
         .reduce(max);
+    // Loại bỏ trận tranh 3-4 khi tìm "vòng hiện tại" cần generate vòng kế.
+    // Trận tranh 3-4 sống ở cùng roundIndex với chung kết nhưng KHÔNG quyết
+    // định ai đi tiếp — nó là leaf, đặc biệt.
     final currentRound = state.knockoutFixtures
-        .where((f) => f.roundIndex == currentRoundIndex)
+        .where(
+          (f) =>
+              f.roundIndex == currentRoundIndex &&
+              f.roundName != _thirdPlaceRoundName,
+        )
         .toList();
     if (currentRound.any((f) => !f.isPlayed)) return state;
     if (currentRound.length == 1) return state;
@@ -490,6 +596,26 @@ class LeagueEngine {
         ),
       );
     }
+    // Khi vòng hiện tại là bán kết thực sự (2 trận sinh ra final 2 người)
+    // → thêm trận tranh 3-4 giữa 2 người thua. Skip khi có bye ở R1 vì
+    // luồng đó không đảm bảo có đúng 2 "thua bán kết" cùng cấp.
+    if (nextPlayers.length == 2 &&
+        currentRound.length == 2 &&
+        !hasFirstRoundByes) {
+      final losers = currentRound
+          .map((f) => f.score1 > f.score2 ? f.player2Id : f.player1Id)
+          .toList();
+      nextFixtures.add(
+        MatchFixture(
+          id: 'ko_${nextRoundIndex}_3rd',
+          player1Id: losers[0],
+          player2Id: losers[1],
+          stage: MatchStage.knockout,
+          roundIndex: nextRoundIndex,
+          roundName: _thirdPlaceRoundName,
+        ),
+      );
+    }
     return state.copyWith(
       fixtures: [...state.fixtures, ...nextFixtures],
       knockoutByePlayerIds: hasFirstRoundByes
@@ -497,6 +623,8 @@ class LeagueEngine {
           : state.knockoutByePlayerIds,
     );
   }
+
+  static const _thirdPlaceRoundName = 'Tranh 3-4';
 
   void _validateEditableFixture(LeagueState state, MatchFixture fixture) {
     if (!state.usesGroupStage) return;
@@ -522,13 +650,76 @@ class LeagueEngine {
         : fixture.player2Id;
   }
 
-  /// Sort by ranking: Points DESC → GoalDifference DESC → GoalsFor DESC →
-  /// (giữ thứ tự gốc — tên alphabet) cho deterministic.
-  List<LeaguePlayer> _sortByRanking(List<LeaguePlayer> players) {
-    final sorted = [...players];
+  /// Sort by ranking với tiebreaker:
+  /// 1. Points DESC.
+  /// 2. **Head-to-head wins** giữa các player cùng điểm (Copeland: đếm số
+  ///    trận thắng đối đầu trong tier). Khi tied (Condorcet cycle, vd 3
+  ///    người mỗi người 1 thắng 1 thua trong tier) → bỏ mini-table và
+  ///    nhảy thẳng xuống overall, KHÔNG dùng mini-GD/mini-GF vì chúng
+  ///    không đại diện cho pairwise.
+  /// 3. Overall GoalDifference DESC.
+  /// 4. Overall GoalsFor DESC.
+  /// 5. Tên alphabet (deterministic fallback).
+  ///
+  /// H2H chỉ tính trên fixtures `isPlayed` và giữa các player tied. Hai
+  /// player khác bảng (không gặp nhau) sẽ có mini-stats 0-0 → fall through
+  /// sang overall tiebreaker. Cùng bảng + gặp nhau → mini-stats có nghĩa.
+  List<LeaguePlayer> _sortByRanking(
+    List<LeaguePlayer> players, {
+    Iterable<MatchFixture>? fixtures,
+  }) {
+    // Group players theo tier điểm (mỗi tier = tied trên Points).
+    final byPoints = <int, List<LeaguePlayer>>{};
+    for (final p in players) {
+      byPoints.putIfAbsent(p.points, () => []).add(p);
+    }
+    final pointTiers = byPoints.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    final result = <LeaguePlayer>[];
+    for (final pts in pointTiers) {
+      final tier = byPoints[pts]!;
+      if (tier.length == 1) {
+        result.add(tier.first);
+        continue;
+      }
+      result.addAll(_sortTier(tier, fixtures));
+    }
+    return result;
+  }
+
+  List<LeaguePlayer> _sortTier(
+    List<LeaguePlayer> tier,
+    Iterable<MatchFixture>? fixtures,
+  ) {
+    final tierIds = tier.map((p) => p.id).toSet();
+    // Mini-stats chỉ từ fixtures giữa các player tied.
+    final mini = <String, _MiniStats>{for (final p in tier) p.id: _MiniStats()};
+    if (fixtures != null) {
+      for (final f in fixtures) {
+        if (!f.isPlayed) continue;
+        if (!tierIds.contains(f.player1Id) || !tierIds.contains(f.player2Id)) {
+          continue;
+        }
+        final s1 = mini[f.player1Id]!;
+        final s2 = mini[f.player2Id]!;
+        s1.goalsFor += f.score1;
+        s1.goalsAgainst += f.score2;
+        s2.goalsFor += f.score2;
+        s2.goalsAgainst += f.score1;
+        if (f.score1 > f.score2) s1.points += 1;
+        if (f.score2 > f.score1) s2.points += 1;
+      }
+    }
+
+    final sorted = [...tier];
     sorted.sort((a, b) {
-      final byPoints = b.points.compareTo(a.points);
-      if (byPoints != 0) return byPoints;
+      final ma = mini[a.id]!;
+      final mb = mini[b.id]!;
+      // Copeland: số trận thắng đối đầu trong tier. 2 người tied + 1 trận
+      // → người thắng có mini-points=1, người thua=0. 3+ người Condorcet
+      // cycle → tất cả bằng nhau, fall through xuống overall.
+      final byMiniPts = mb.points.compareTo(ma.points);
+      if (byMiniPts != 0) return byMiniPts;
       final byDiff = b.goalDifference.compareTo(a.goalDifference);
       if (byDiff != 0) return byDiff;
       final byFor = b.goalsFor.compareTo(a.goalsFor);
@@ -580,4 +771,11 @@ class _KnockoutRoundPlan {
 
   final List<MatchFixture> fixtures;
   final List<String> byePlayerIds;
+}
+
+/// Stats nội bộ cho H2H mini-table — accumulator khi sort tier tied points.
+class _MiniStats {
+  int points = 0;
+  int goalsFor = 0;
+  int goalsAgainst = 0;
 }
