@@ -2,13 +2,14 @@
 
 Flutter app ghi điểm bi-a (Vietnamese billiards). 3 modes: Bắn đền (penalty369),
 Pool (race-to-X, biến thể 8/9/10-Ball/tuỳ ý chọn ở Setup), và Giải đấu (league —
-vòng tròn tính điểm). Target: Android (chính), iOS, Web (PWA via Docker).
+3 thể thức: vòng tròn / vòng bảng manual + knockout / đấu nhánh kép).
+Target: Android (chính), iOS, Web (PWA via Docker).
 
 ## Build / Test / Run
 
 ```
 flutter analyze        # phải sạch trước khi commit
-flutter test           # 26 tests trong test/app_flow_test.dart
+flutter test           # 108 tests (app_flow + engine + providers + widgets)
 flutter run            # debug build (chọn device)
 flutter build web --release
 ```
@@ -27,7 +28,8 @@ lib/
 ├── app.dart            # MaterialApp + theme + _AppShell routing theo mode
 ├── logic/              # Engine pure functions (không Riverpod, không I/O)
 │   ├── game_engine.dart       # Bắn đền
-│   └── nine_ball_engine.dart  # race-to-X (Pool, dùng cho mọi biến thể)
+│   ├── nine_ball_engine.dart  # race-to-X (Pool, dùng cho mọi biến thể)
+│   └── league_engine.dart     # Giải đấu (vòng tròn / bảng / double-elim)
 ├── providers/          # Riverpod NotifierProvider — wrap engine + ref disk
 ├── models/             # Plain data + JSON serialization
 ├── services/           # SharedPreferences persistence (static methods)
@@ -47,14 +49,44 @@ lib/
   **nhiều giải song song**: mỗi giải có `id` riêng (sinh ở engine), lưu
   vào list `active_leagues_v1` qua `ActiveLeaguesController` (listenSelf
   auto-persist). User switch giữa các giải không mất tỷ số.
-  Vòng tròn: N người → N*(N-1)/2 fixtures (shuffle random). Tap 1 fixture →
-  bottom sheet nhập tỷ số → `LeagueController.updateScore` → engine
-  recalculate leaderboard từ đầu → listenSelf upsert vào active list.
+  Setup có 3 tab thể thức (`LeagueFormat`):
+  1. **Vòng tròn**: N người → N*(N-1)/2 fixtures.
+  2. **Vòng bảng (manual)**: user tự chia bảng A, B, C... (default 2 bảng
+     × 4 người), mỗi bảng đấu vòng tròn → top 2 vào nhánh knockout
+     (single-elim + tranh 3-4). Engine xử lý seeding + knockout
+     advancement; trận tranh 3-4 sinh tự động khi bán kết kết thúc
+     (roundName `Tranh 3-4`, cùng roundIndex với chung kết).
+  3. **Đấu nhánh kép (double-elim)**: N ∈ {8, 16, 32}. Engine sinh
+     trước TOÀN BỘ bracket (nhánh thắng + nhánh thua + GF) với placeholder slot — fill
+     dần qua source linkage (`sourceWinnerOfP*Id`, `sourceLoserOfP*Id`).
+     Mỗi `updateScore` cascade fill các dependent fixtures; `clearScore`
+     đệ quy invalidate descendants.
+     Play screen có toggle list/tree (`_bracketViewModeProvider`, in-memory):
+     - List view: WB → LB → GF dọc, mỗi round 1 section header.
+     - Tree view (default): widget [`BracketTree`](lib/widgets/bracket_tree.dart)
+       render WB dạng cây (Stack + Positioned cards + CustomPaint vẽ đường
+       nối "└┐"); wrap `InteractiveViewer` cho pinch zoom + pan. LB render
+       bằng `_LosersBracketColumns` (horizontal scroll columns, KHÔNG đường
+       nối — vì intake rounds nhận thua cross-bracket từ WB). GF: 1 card.
+  Tap 1 fixture → bottom sheet nhập tỷ số → `LeagueController.updateScore` →
+  engine recalculate leaderboard hoặc cascade bracket → listenSelf upsert
+  vào active list.
   Session (`league_session_v1`) lưu viewMode + currentId → app mở lại
   landing đúng màn user đang xem dở.
   Bấm "Kết thúc giải" → append vào `league_history_v1` + remove khỏi
   active list (thứ tự: history xong mới remove để không mất giải khi crash).
-  Tie-breaker: Points → GoalDifference → GoalsFor.
+  **Tie-breaker** (vòng tròn + vòng bảng): Points → H2H mini-points
+  (Copeland: số trận thắng đối đầu trong tier) → Overall GoalDifference →
+  Overall GoalsFor → tên alphabet. Khi mini-points tied (Condorcet cycle)
+  thì BỎ QUA mini-GD/mini-GF và nhảy thẳng xuống overall — vì mini-GD
+  trong cycle không đại diện cho pairwise H2H.
+  Bảng xếp hạng hiển thị 4 cột stats: Trận / TS Ván (= goalsFor) / HS / Điểm.
+  Mỗi người chơi 1 màu chữ trong fixture list (`assignPlayerColors` sort
+  theo id → stable qua re-rank).
+  Engine có method `recalculate(state)` chạy lúc load seed từ disk (cả
+  `LeagueController.build` lẫn `ActiveLeaguesController.build`) — cần thiết
+  khi tiebreaker đổi giữa các phiên bản app, state cũ trên đĩa giữ thứ tự
+  cũ không tự refresh.
 
 ## State management pattern
 
@@ -106,6 +138,14 @@ Mỗi service 1 storage key với version suffix (vd `match_history_v1`):
   (gallery, maxWidth 1280, quality 80) → `coverImageProvider.set(bytes)`.
   Null → banner mặc định `assets/banner.jpg`. `Image.memory` vs `Image.asset`.
   iOS cần `NSPhotoLibraryUsageDescription` trong Info.plist.
+- League trio:
+  - `ActiveLeaguesStorage` (`active_leagues_v1`) → list giải đang chơi
+    (status=inProgress). Per-entry try/catch — 1 entry hỏng không wipe
+    cả list. Migrate 1 lần từ key cũ `active_league_v1`.
+  - `LeagueSessionStorage` (`league_session_v1`) → `{viewMode, currentId}`
+    để mở app trở lại đúng màn (list / current league).
+  - `LeagueHistoryStorage` (`league_history_v1`) → giải đã chốt. Identity
+    qua `id` (engine sinh, legacy fallback `_legacyId(startedAt, json)`).
 
 JSON encode/decode + try-catch fallback `clear()` nếu data hỏng.
 

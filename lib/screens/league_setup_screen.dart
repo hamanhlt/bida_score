@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../logic/league_engine.dart';
 import '../providers/game_controller.dart';
 import '../providers/league_controller.dart';
 import '../theme/app_colors.dart';
 import '../widgets/name_history_button.dart';
 import '../widgets/table_background.dart';
 
-/// Setup giải đấu — 2 thể thức:
+enum _SetupMode { roundRobin, groupKnockout, doubleElim }
+
+/// Setup giải đấu — 3 thể thức:
 /// - **Vòng tròn**: list phẳng người chơi, mỗi người gặp nhau 1 lần.
 /// - **Vòng bảng**: user chia bảng **bằng tay** (default 2 bảng A, B mỗi
 ///   bảng 4 người). +/- bảng, +/- người chơi trong bảng.
+/// - **Đấu nhánh kép**: nhập từng cặp đấu lượt 1, sau lượt 1 mới tách nhánh.
 class LeagueSetupScreen extends ConsumerStatefulWidget {
   const LeagueSetupScreen({super.key});
 
@@ -29,8 +33,11 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
   // Vòng bảng: nested list. Default 2 bảng × 4 người (8 total).
   final List<List<TextEditingController>> _groupControllers = [];
 
+  // Đấu nhánh kép: flat list theo cặp lượt 1, N phải là 8/16/32.
+  final List<TextEditingController> _deControllers = [];
+
   String? _errorText;
-  bool _useGroupKnockout = false;
+  _SetupMode _mode = _SetupMode.roundRobin;
 
   static const _minPlayers = 3;
   static const _maxPlayers = 16;
@@ -54,6 +61,10 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
           TextEditingController(text: '$letter${p + 1}'),
       ]);
     }
+    // Đấu nhánh defaults: 8 người (power of 2 phổ biến).
+    for (var i = 0; i < 8; i++) {
+      _deControllers.add(TextEditingController(text: 'Người chơi ${i + 1}'));
+    }
   }
 
   @override
@@ -66,6 +77,9 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       for (final c in group) {
         c.dispose();
       }
+    }
+    for (final c in _deControllers) {
+      c.dispose();
     }
     super.dispose();
   }
@@ -168,7 +182,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       return;
     }
 
-    if (!_useGroupKnockout) {
+    if (_mode == _SetupMode.roundRobin) {
       final names = _rrControllers.map((c) => c.text.trim()).toList();
       if (names.any((n) => n.isEmpty)) {
         setState(() => _errorText = 'Mỗi người chơi cần có tên.');
@@ -180,14 +194,50 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
         return;
       }
       try {
-        ref.read(leagueControllerProvider.notifier).startTournament(
+        ref
+            .read(leagueControllerProvider.notifier)
+            .startTournament(names, tournamentName: tournamentName);
+        ref.read(playerNameHistoryProvider.notifier).addAll(names);
+      } on ArgumentError catch (e) {
+        setState(
+          () => _errorText = e.message?.toString() ?? 'Danh sách không hợp lệ.',
+        );
+      }
+      return;
+    }
+
+    if (_mode == _SetupMode.doubleElim) {
+      final names = _deControllers.map((c) => c.text.trim()).toList();
+      if (names.any((n) => n.isEmpty)) {
+        setState(() => _errorText = 'Mỗi người chơi cần có tên.');
+        return;
+      }
+      final lower = names.map((n) => n.toLowerCase()).toSet();
+      if (lower.length != names.length) {
+        setState(() => _errorText = 'Tên người chơi phải khác nhau.');
+        return;
+      }
+      if (!LeagueEngine.doubleElimSizes.contains(names.length)) {
+        setState(
+          () => _errorText =
+              'Đấu nhánh cần tối thiểu 8 người và hỗ trợ 8/16/32 người '
+              '(hiện ${names.length}).',
+        );
+        return;
+      }
+      try {
+        ref
+            .read(leagueControllerProvider.notifier)
+            .startTournament(
               names,
               tournamentName: tournamentName,
+              doubleElim: true,
             );
         ref.read(playerNameHistoryProvider.notifier).addAll(names);
       } on ArgumentError catch (e) {
-        setState(() => _errorText =
-            e.message?.toString() ?? 'Danh sách không hợp lệ.');
+        setState(
+          () => _errorText = e.message?.toString() ?? 'Cấu hình không hợp lệ.',
+        );
       }
       return;
     }
@@ -207,15 +257,19 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       return;
     }
     try {
-      ref.read(leagueControllerProvider.notifier).startTournament(
+      ref
+          .read(leagueControllerProvider.notifier)
+          .startTournament(
             allNames,
             tournamentName: tournamentName,
             manualGroups: manualGroups,
           );
       ref.read(playerNameHistoryProvider.notifier).addAll(allNames);
     } on ArgumentError catch (e) {
-      setState(() => _errorText =
-          e.message?.toString() ?? 'Cấu hình bảng không hợp lệ.');
+      setState(
+        () =>
+            _errorText = e.message?.toString() ?? 'Cấu hình bảng không hợp lệ.',
+      );
     }
   }
 
@@ -283,8 +337,8 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                   ),
                   const SizedBox(height: 14),
                   DefaultTabController(
-                    length: 2,
-                    initialIndex: _useGroupKnockout ? 1 : 0,
+                    length: 3,
+                    initialIndex: _mode.index,
                     child: Card(
                       child: Padding(
                         padding: const EdgeInsets.all(20),
@@ -296,7 +350,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                             TabBar(
                               onTap: (index) {
                                 setState(() {
-                                  _useGroupKnockout = index == 1;
+                                  _mode = _SetupMode.values[index];
                                   _errorText = null;
                                 });
                               },
@@ -304,6 +358,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                               unselectedLabelColor: AppColors.textSubtle,
                               indicatorColor: AppColors.accent,
                               indicatorWeight: 3,
+                              isScrollable: true,
                               tabs: const [
                                 Tab(
                                   text: 'Vòng tròn',
@@ -313,14 +368,15 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                                   text: 'Vòng bảng',
                                   icon: Icon(Icons.account_tree_rounded),
                                 ),
+                                Tab(
+                                  text: 'Đấu nhánh',
+                                  icon: Icon(Icons.hub_rounded),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              _useGroupKnockout
-                                  ? 'Tự chia bảng. Mỗi bảng đấu vòng tròn, '
-                                      'top 2 vào knockout (kèm tranh 3-4).'
-                                  : 'Mỗi người gặp nhau 1 lần. Thắng = +1 điểm.',
+                              _modeDescription(),
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: AppColors.textSubtle,
                                 fontWeight: FontWeight.w600,
@@ -340,10 +396,11 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  if (_useGroupKnockout)
-                    _buildGroupsCard(theme)
-                  else
-                    _buildRoundRobinCard(theme),
+                  switch (_mode) {
+                    _SetupMode.roundRobin => _buildRoundRobinCard(theme),
+                    _SetupMode.groupKnockout => _buildGroupsCard(theme),
+                    _SetupMode.doubleElim => _buildDoubleElimCard(theme),
+                  },
                   if (_errorText != null) ...[
                     const SizedBox(height: 16),
                     Text(
@@ -414,8 +471,9 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                 canRemove: canRemove,
                 onPick: (name) {
                   _rrControllers[i].text = name;
-                  _rrControllers[i].selection =
-                      TextSelection.collapsed(offset: name.length);
+                  _rrControllers[i].selection = TextSelection.collapsed(
+                    offset: name.length,
+                  );
                   _clearError();
                 },
                 onChanged: _clearError,
@@ -437,7 +495,8 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
 
   Widget _buildGroupsCard(ThemeData theme) {
     final total = _groupTotalPlayers;
-    final canAddGroup = _groupControllers.length < _maxGroups &&
+    final canAddGroup =
+        _groupControllers.length < _maxGroups &&
         total + _minGroupSize <= _maxPlayers;
     final canRemoveGroup = _groupControllers.length > _minGroups;
 
@@ -467,7 +526,8 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                 title: 'Bảng ${_groupLetter(gi)}',
                 playerCount: _groupControllers[gi].length,
                 canRemoveGroup: canRemoveGroup,
-                canAddPlayer: _groupControllers[gi].length < _maxGroupSize &&
+                canAddPlayer:
+                    _groupControllers[gi].length < _maxGroupSize &&
                     total < _maxPlayers,
                 onRemoveGroup: () => _removeGroup(gi),
                 onAddPlayer: () => _addPlayerToGroup(gi),
@@ -478,8 +538,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                       label: 'Người ${pi + 1}',
                       textInputAction: TextInputAction.next,
                       excluded: _excludedGroup(gi, pi),
-                      canRemove:
-                          _groupControllers[gi].length > _minGroupSize,
+                      canRemove: _groupControllers[gi].length > _minGroupSize,
                       onPick: (name) {
                         _groupControllers[gi][pi].text = name;
                         _groupControllers[gi][pi].selection =
@@ -507,25 +566,171 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     );
   }
 
+  Widget _buildDoubleElimCard(ThemeData theme) {
+    final n = _deControllers.length;
+    final pairCount = n ~/ 2;
+    final isValidSize = LeagueEngine.doubleElimSizes.contains(n);
+    final nextSize = _nextDeSize();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text('Cặp đấu lượt 1', style: theme.textTheme.titleLarge),
+                const Spacer(),
+                Text(
+                  '$n người · $pairCount cặp',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: isValidSize
+                        ? AppColors.textSubtle
+                        : theme.colorScheme.error,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Nhập đúng từng cặp mở màn. App giữ nguyên thứ tự này, không '
+              'bốc ngẫu nhiên.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isValidSize
+                    ? AppColors.textSubtle
+                    : theme.colorScheme.error,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Quick-set buttons.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final size in LeagueEngine.doubleElimSizes)
+                  ChoiceChip(
+                    label: Text('$size người'),
+                    selected: n == size,
+                    onSelected: (_) => _setDeSize(size),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            for (var pairIndex = 0; pairIndex < pairCount; pairIndex++) ...[
+              _DoubleElimPairSection(
+                title: 'Cặp đấu ${pairIndex + 1}',
+                children: [
+                  for (var offset = 0; offset < 2; offset++) ...[
+                    _PlayerNameRow(
+                      controller: _deControllers[pairIndex * 2 + offset],
+                      label: 'Cơ thủ ${offset + 1}',
+                      textInputAction: pairIndex == pairCount - 1 && offset == 1
+                          ? TextInputAction.done
+                          : TextInputAction.next,
+                      excluded: _excludedDe(pairIndex * 2 + offset),
+                      canRemove: false,
+                      showRemove: false,
+                      onPick: (name) {
+                        final index = pairIndex * 2 + offset;
+                        _deControllers[index].text = name;
+                        _deControllers[index].selection =
+                            TextSelection.collapsed(offset: name.length);
+                        _clearError();
+                      },
+                      onChanged: _clearError,
+                      onRemove: () {},
+                    ),
+                    if (offset == 0) const SizedBox(height: 10),
+                  ],
+                ],
+              ),
+              if (pairIndex != pairCount - 1) const SizedBox(height: 12),
+            ],
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: nextSize == null ? null : () => _setDeSize(nextSize),
+              icon: const Icon(Icons.add_rounded),
+              label: Text(
+                nextSize == null
+                    ? 'Đã đủ ${LeagueEngine.doubleElimSizes.last} người'
+                    : 'Thêm lên $nextSize người',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _setDeSize(int size) {
+    setState(() {
+      while (_deControllers.length > size) {
+        _deControllers.removeLast().dispose();
+      }
+      while (_deControllers.length < size) {
+        _deControllers.add(
+          TextEditingController(
+            text: 'Người chơi ${_deControllers.length + 1}',
+          ),
+        );
+      }
+      _errorText = null;
+    });
+  }
+
+  int? _nextDeSize() {
+    for (final size in LeagueEngine.doubleElimSizes) {
+      if (size > _deControllers.length) return size;
+    }
+    return null;
+  }
+
+  Set<String> _excludedDe(int excludeIndex) {
+    return {
+      for (var j = 0; j < _deControllers.length; j++)
+        if (j != excludeIndex) _deControllers[j].text.trim().toLowerCase(),
+    }..removeWhere((n) => n.isEmpty);
+  }
+
   // ────────────────────────── helpers ──────────────────────────
 
   int _pairCount(int n) => n < 2 ? 0 : n * (n - 1) ~/ 2;
 
   int _plannedMatchCount() {
-    if (!_useGroupKnockout) {
-      return _pairCount(_rrControllers.length);
+    switch (_mode) {
+      case _SetupMode.roundRobin:
+        return _pairCount(_rrControllers.length);
+      case _SetupMode.doubleElim:
+        final n = _deControllers.length;
+        if (!LeagueEngine.doubleElimSizes.contains(n)) return 0;
+        // Double-elim 1 trận chung kết tổng: WB (N-1) + LB (N-2) + GF.
+        return 2 * n - 2;
+      case _SetupMode.groupKnockout:
+        final groupMatches = _groupControllers.fold<int>(
+          0,
+          (sum, g) => sum + _pairCount(g.length),
+        );
+        final knockoutPlayers = _groupControllers.length * 2;
+        final mainBracket = knockoutPlayers <= 1 ? 0 : knockoutPlayers - 1;
+        final hasSemifinals = knockoutPlayers == 4;
+        final extraThird = hasSemifinals ? 1 : 0;
+        return groupMatches + mainBracket + extraThird;
     }
-    final groupMatches = _groupControllers.fold<int>(
-      0,
-      (sum, g) => sum + _pairCount(g.length),
-    );
-    final knockoutPlayers = _groupControllers.length * 2;
-    // Bracket size = 2*N. Tổng knockout = (2N - 1) trận chính + 1 tranh 3-4
-    // khi có bán kết thực (2N == 4).
-    final mainBracket = knockoutPlayers <= 1 ? 0 : knockoutPlayers - 1;
-    final hasSemifinals = knockoutPlayers == 4; // hiện chỉ chính xác cho 4
-    final extraThird = hasSemifinals ? 1 : 0;
-    return groupMatches + mainBracket + extraThird;
+  }
+
+  String _modeDescription() {
+    switch (_mode) {
+      case _SetupMode.roundRobin:
+        return 'Mỗi người gặp nhau 1 lần. Thắng = +1 điểm.';
+      case _SetupMode.groupKnockout:
+        return 'Tự chia bảng. Mỗi bảng đấu vòng tròn, top 2 vào knockout '
+            '(kèm tranh 3-4).';
+      case _SetupMode.doubleElim:
+        return 'Đấu nhánh kép: Nhánh thắng + Nhánh thua + Chung kết tổng. '
+            'Lượt 1 nhập theo cặp, không random. Thua 2 lần mới bị loại.';
+    }
   }
 
   String _groupLetter(int index) {
@@ -607,6 +812,40 @@ class _GroupCard extends StatelessWidget {
   }
 }
 
+class _DoubleElimPairSection extends StatelessWidget {
+  const _DoubleElimPairSection({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withAlpha(18),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: AppColors.textDark,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
 class _PlayerNameRow extends StatelessWidget {
   const _PlayerNameRow({
     required this.controller,
@@ -614,6 +853,7 @@ class _PlayerNameRow extends StatelessWidget {
     required this.textInputAction,
     required this.excluded,
     required this.canRemove,
+    this.showRemove = true,
     required this.onPick,
     required this.onChanged,
     required this.onRemove,
@@ -624,6 +864,7 @@ class _PlayerNameRow extends StatelessWidget {
   final TextInputAction textInputAction;
   final Set<String> excluded;
   final bool canRemove;
+  final bool showRemove;
   final ValueChanged<String> onPick;
   final VoidCallback onChanged;
   final VoidCallback onRemove;
@@ -643,12 +884,14 @@ class _PlayerNameRow extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 10),
-        IconButton.filledTonal(
-          onPressed: canRemove ? onRemove : null,
-          tooltip: 'Xoá người chơi',
-          icon: const Icon(Icons.remove_rounded),
-        ),
+        if (showRemove) ...[
+          const SizedBox(width: 10),
+          IconButton.filledTonal(
+            onPressed: canRemove ? onRemove : null,
+            tooltip: 'Xoá người chơi',
+            icon: const Icon(Icons.remove_rounded),
+          ),
+        ],
       ],
     );
   }

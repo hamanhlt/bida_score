@@ -151,10 +151,12 @@ class LeagueEngine {
   ) {
     // Trim + lọc rỗng per-group.
     final trimmedGroups = rawGroups
-        .map((g) => g
-            .map((n) => n.trim())
-            .where((n) => n.isNotEmpty)
-            .toList(growable: false))
+        .map(
+          (g) => g
+              .map((n) => n.trim())
+              .where((n) => n.isNotEmpty)
+              .toList(growable: false),
+        )
         .toList(growable: false);
 
     if (trimmedGroups.length < 2) {
@@ -180,7 +182,10 @@ class LeagueEngine {
     // Sinh players + map từng tên về player id để xếp vào group.
     final players = <LeaguePlayer>[
       for (var i = 0; i < allNames.length; i++)
-        LeaguePlayer(id: 'lp_${i + 1}_${_slug(allNames[i])}', name: allNames[i]),
+        LeaguePlayer(
+          id: 'lp_${i + 1}_${_slug(allNames[i])}',
+          name: allNames[i],
+        ),
     ];
     var cursor = 0;
     final groups = <LeagueGroup>[];
@@ -233,6 +238,9 @@ class LeagueEngine {
     int score1,
     int score2,
   ) {
+    if (state.usesDoubleElim) {
+      return updateScoreDoubleElim(state, fixtureId, score1, score2);
+    }
     // Validate input TRƯỚC status guard → caller phân biệt được "score xấu"
     // vs "giải đã kết thúc" (giải finished thì noop).
     if (score1 < 0 || score2 < 0) {
@@ -299,6 +307,9 @@ class LeagueEngine {
   /// Throw [ArgumentError] nếu fixtureId không tồn tại — contract đồng nhất
   /// với [updateScore].
   LeagueState clearScore(LeagueState state, String fixtureId) {
+    if (state.usesDoubleElim) {
+      return clearScoreDoubleElim(state, fixtureId);
+    }
     final idx = state.fixtures.indexWhere((f) => f.id == fixtureId);
     if (idx < 0) {
       throw ArgumentError('Không tìm thấy trận $fixtureId.');
@@ -325,6 +336,9 @@ class LeagueEngine {
   /// (đã được recalculate sau mỗi updateScore).
   LeagueState finishTournament(LeagueState state) {
     if (state.status != LeagueStatus.inProgress) return state;
+    if (state.usesDoubleElim && !state.doubleElimComplete) {
+      throw ArgumentError('Cần hoàn thành Chung kết tổng.');
+    }
     if (state.usesGroupStage && !state.knockoutComplete) {
       throw ArgumentError('Cần hoàn thành trận chung kết knockout.');
     }
@@ -336,11 +350,353 @@ class LeagueEngine {
 
   LeagueState resetTournament() => LeagueState.initial();
 
+  // ─────────── Double Elimination ───────────
+
+  static const _doubleElimSizes = [8, 16, 32];
+
+  /// Số người chơi hợp lệ cho double-elim (power of 2, tối thiểu 8).
+  static List<int> get doubleElimSizes => _doubleElimSizes;
+
+  /// Khởi tạo giải đấu nhánh kép. N phải là 8, 16, hoặc 32.
+  ///
+  /// Sinh trước TOÀN BỘ bracket (nhánh thắng + nhánh thua + GF) với placeholder cho slot
+  /// player chưa biết. Khi 1 trận kết thúc, engine fill player vào các
+  /// fixture phụ thuộc qua `sourceWinnerOfP*Id` / `sourceLoserOfP*Id`.
+  LeagueState startDoubleElim(
+    List<String> rawNames, {
+    String tournamentName = '',
+  }) {
+    final names = rawNames
+        .map((n) => n.trim())
+        .where((n) => n.isNotEmpty)
+        .toList();
+
+    if (!_doubleElimSizes.contains(names.length)) {
+      throw ArgumentError(
+        'Đấu nhánh cần tối thiểu 8 người và hỗ trợ 8/16/32 người '
+        '(hiện ${names.length}).',
+      );
+    }
+    final lower = names.map((n) => n.toLowerCase()).toSet();
+    if (lower.length != names.length) {
+      throw ArgumentError('Tên người chơi phải khác nhau.');
+    }
+
+    final players = <LeaguePlayer>[
+      for (var i = 0; i < names.length; i++)
+        LeaguePlayer(id: 'lp_${i + 1}_${_slug(names[i])}', name: names[i]),
+    ];
+
+    final n = players.length;
+    final m = _log2(n); // số vòng WB
+    final lbRoundCount = 2 * m - 2;
+    final fixtures = <MatchFixture>[];
+
+    // WB R1: real players.
+    final wbR1Count = n ~/ 2;
+    for (var i = 0; i < wbR1Count; i++) {
+      fixtures.add(
+        MatchFixture(
+          id: 'wb_r1_m${i + 1}',
+          player1Id: players[2 * i].id,
+          player2Id: players[2 * i + 1].id,
+          stage: MatchStage.knockout,
+          bracketSide: BracketSide.winners,
+          roundIndex: 1,
+          roundName: _wbRoundName(1, m),
+        ),
+      );
+    }
+
+    // WB R2..Rm: placeholder, sources = winners của 2 trận WB round trước.
+    for (var r = 2; r <= m; r++) {
+      final count = 1 << (m - r);
+      for (var i = 0; i < count; i++) {
+        fixtures.add(
+          MatchFixture(
+            id: 'wb_r${r}_m${i + 1}',
+            player1Id: '',
+            player2Id: '',
+            stage: MatchStage.knockout,
+            bracketSide: BracketSide.winners,
+            roundIndex: r,
+            roundName: _wbRoundName(r, m),
+            sourceWinnerOfP1Id: 'wb_r${r - 1}_m${2 * i + 1}',
+            sourceWinnerOfP2Id: 'wb_r${r - 1}_m${2 * i + 2}',
+          ),
+        );
+      }
+    }
+
+    // LB R1: pair WB R1 losers tuần tự.
+    final lbR1Count = wbR1Count ~/ 2;
+    for (var i = 0; i < lbR1Count; i++) {
+      fixtures.add(
+        MatchFixture(
+          id: 'lb_r1_m${i + 1}',
+          player1Id: '',
+          player2Id: '',
+          stage: MatchStage.knockout,
+          bracketSide: BracketSide.losers,
+          roundIndex: 1,
+          roundName: lbRoundCount == 1 ? 'LB Chung kết' : 'LB R1',
+          sourceLoserOfP1Id: 'wb_r1_m${2 * i + 1}',
+          sourceLoserOfP2Id: 'wb_r1_m${2 * i + 2}',
+        ),
+      );
+    }
+
+    // LB R2..R(2m-2): xen kẽ intake (chẵn) / pure (lẻ).
+    for (var lbR = 2; lbR <= lbRoundCount; lbR++) {
+      final count = 1 << (m - 2 - ((lbR - 1) ~/ 2));
+      final isIntake = lbR.isEven;
+      final isLBFinal = lbR == lbRoundCount;
+      final roundName = isLBFinal ? 'LB Chung kết' : 'LB R$lbR';
+      for (var i = 0; i < count; i++) {
+        if (isIntake) {
+          final wbSourceRound = lbR ~/ 2 + 1;
+          fixtures.add(
+            MatchFixture(
+              id: 'lb_r${lbR}_m${i + 1}',
+              player1Id: '',
+              player2Id: '',
+              stage: MatchStage.knockout,
+              bracketSide: BracketSide.losers,
+              roundIndex: lbR,
+              roundName: roundName,
+              sourceWinnerOfP1Id: 'lb_r${lbR - 1}_m${i + 1}',
+              sourceLoserOfP2Id: 'wb_r${wbSourceRound}_m${i + 1}',
+            ),
+          );
+        } else {
+          fixtures.add(
+            MatchFixture(
+              id: 'lb_r${lbR}_m${i + 1}',
+              player1Id: '',
+              player2Id: '',
+              stage: MatchStage.knockout,
+              bracketSide: BracketSide.losers,
+              roundIndex: lbR,
+              roundName: roundName,
+              sourceWinnerOfP1Id: 'lb_r${lbR - 1}_m${2 * i + 1}',
+              sourceWinnerOfP2Id: 'lb_r${lbR - 1}_m${2 * i + 2}',
+            ),
+          );
+        }
+      }
+    }
+
+    // Grand Final.
+    fixtures.add(
+      MatchFixture(
+        id: 'gf_1',
+        player1Id: '',
+        player2Id: '',
+        stage: MatchStage.knockout,
+        bracketSide: BracketSide.grandFinal,
+        roundIndex: m + lbRoundCount + 1,
+        roundName: 'Chung kết tổng',
+        sourceWinnerOfP1Id: 'wb_r${m}_m1',
+        sourceWinnerOfP2Id: 'lb_r${lbRoundCount}_m1',
+      ),
+    );
+
+    final startedAt = DateTime.now();
+    return LeagueState(
+      id: _generateLeagueId(startedAt),
+      name: tournamentName.trim(),
+      status: LeagueStatus.inProgress,
+      format: LeagueFormat.doubleElim,
+      phase: LeaguePhase.knockout,
+      players: players,
+      fixtures: fixtures,
+      startedAt: startedAt,
+    );
+  }
+
+  /// Cập nhật tỷ số trong double-elim + cascade fill các slot phụ thuộc.
+  /// Trận knockout không cho phép hoà.
+  LeagueState updateScoreDoubleElim(
+    LeagueState state,
+    String fixtureId,
+    int score1,
+    int score2,
+  ) {
+    if (score1 < 0 || score2 < 0) {
+      throw ArgumentError('Tỷ số phải ≥ 0.');
+    }
+    if (score1 > _maxScore || score2 > _maxScore) {
+      throw ArgumentError('Tỷ số tối đa $_maxScore.');
+    }
+    if (score1 == score2) {
+      throw ArgumentError('Trận knockout cần có người thắng.');
+    }
+    final idx = state.fixtures.indexWhere((f) => f.id == fixtureId);
+    if (idx < 0) {
+      throw ArgumentError('Không tìm thấy trận $fixtureId.');
+    }
+    final fixture = state.fixtures[idx];
+    if (!fixture.isReady) {
+      throw ArgumentError('Trận chưa đủ người chơi.');
+    }
+    if (state.status != LeagueStatus.inProgress) return state;
+
+    final newFixtures = [...state.fixtures];
+    newFixtures[idx] = fixture.copyWith(
+      score1: score1,
+      score2: score2,
+      isPlayed: true,
+    );
+
+    final winnerId = score1 > score2 ? fixture.player1Id : fixture.player2Id;
+    final loserId = score1 > score2 ? fixture.player2Id : fixture.player1Id;
+    final cascaded = _cascadeDoubleElim(
+      newFixtures,
+      finishedFixtureId: fixtureId,
+      winnerId: winnerId,
+      loserId: loserId,
+    );
+
+    return state.copyWith(fixtures: cascaded);
+  }
+
+  /// Xoá tỷ số trong double-elim + invalidate (clear slot + isPlayed) các
+  /// fixture phụ thuộc đệ quy.
+  LeagueState clearScoreDoubleElim(LeagueState state, String fixtureId) {
+    final idx = state.fixtures.indexWhere((f) => f.id == fixtureId);
+    if (idx < 0) {
+      throw ArgumentError('Không tìm thấy trận $fixtureId.');
+    }
+    if (state.status != LeagueStatus.inProgress) return state;
+    var fixtures = [...state.fixtures];
+    fixtures[idx] = fixtures[idx].copyWith(
+      score1: 0,
+      score2: 0,
+      isPlayed: false,
+    );
+    fixtures = _invalidateDescendants(fixtures, fixtureId);
+    return state.copyWith(fixtures: fixtures);
+  }
+
+  /// Fill placeholder slot ở các fixture phụ thuộc khi 1 trận có kết quả.
+  List<MatchFixture> _cascadeDoubleElim(
+    List<MatchFixture> fixtures, {
+    required String finishedFixtureId,
+    required String winnerId,
+    required String loserId,
+  }) {
+    final next = [...fixtures];
+    for (var i = 0; i < next.length; i++) {
+      var f = next[i];
+      if (f.id == finishedFixtureId) continue;
+      var p1 = f.player1Id;
+      var p2 = f.player2Id;
+      if (p1.isEmpty && f.sourceWinnerOfP1Id == finishedFixtureId) {
+        p1 = winnerId;
+      } else if (p1.isEmpty && f.sourceLoserOfP1Id == finishedFixtureId) {
+        p1 = loserId;
+      }
+      if (p2.isEmpty && f.sourceWinnerOfP2Id == finishedFixtureId) {
+        p2 = winnerId;
+      } else if (p2.isEmpty && f.sourceLoserOfP2Id == finishedFixtureId) {
+        p2 = loserId;
+      }
+      if (p1 != f.player1Id || p2 != f.player2Id) {
+        next[i] = f.copyWith(player1Id: p1, player2Id: p2);
+      }
+    }
+    return next;
+  }
+
+  /// Clear (set isPlayed=false + xoá player slot do source thay đổi) các
+  /// fixture có source link tới [sourceId]. Đệ quy xuống các con.
+  List<MatchFixture> _invalidateDescendants(
+    List<MatchFixture> fixtures,
+    String sourceId,
+  ) {
+    var changed = false;
+    final next = [...fixtures];
+    for (var i = 0; i < next.length; i++) {
+      final f = next[i];
+      if (f.id == sourceId) continue;
+      final isDep =
+          f.sourceWinnerOfP1Id == sourceId ||
+          f.sourceLoserOfP1Id == sourceId ||
+          f.sourceWinnerOfP2Id == sourceId ||
+          f.sourceLoserOfP2Id == sourceId;
+      if (!isDep) continue;
+      var p1 = f.player1Id;
+      var p2 = f.player2Id;
+      if (f.sourceWinnerOfP1Id == sourceId || f.sourceLoserOfP1Id == sourceId) {
+        p1 = '';
+      }
+      if (f.sourceWinnerOfP2Id == sourceId || f.sourceLoserOfP2Id == sourceId) {
+        p2 = '';
+      }
+      next[i] = f.copyWith(
+        player1Id: p1,
+        player2Id: p2,
+        score1: 0,
+        score2: 0,
+        isPlayed: false,
+      );
+      changed = true;
+      // Recurse: nếu fixture này từng có người chơi, các fixture con của
+      // NÓ cũng cần invalidate.
+      _invalidateDescendantsInPlace(next, f.id);
+    }
+    return changed ? next : fixtures;
+  }
+
+  void _invalidateDescendantsInPlace(List<MatchFixture> fixtures, String src) {
+    for (var i = 0; i < fixtures.length; i++) {
+      final f = fixtures[i];
+      if (f.id == src) continue;
+      final isDep =
+          f.sourceWinnerOfP1Id == src ||
+          f.sourceLoserOfP1Id == src ||
+          f.sourceWinnerOfP2Id == src ||
+          f.sourceLoserOfP2Id == src;
+      if (!isDep) continue;
+      var p1 = f.player1Id;
+      var p2 = f.player2Id;
+      if (f.sourceWinnerOfP1Id == src || f.sourceLoserOfP1Id == src) p1 = '';
+      if (f.sourceWinnerOfP2Id == src || f.sourceLoserOfP2Id == src) p2 = '';
+      if (p1 == f.player1Id && p2 == f.player2Id && !f.isPlayed) continue;
+      fixtures[i] = f.copyWith(
+        player1Id: p1,
+        player2Id: p2,
+        score1: 0,
+        score2: 0,
+        isPlayed: false,
+      );
+      _invalidateDescendantsInPlace(fixtures, f.id);
+    }
+  }
+
+  String _wbRoundName(int round, int totalRounds) {
+    if (round == totalRounds) return 'WB Chung kết';
+    if (round == totalRounds - 1) return 'WB Bán kết';
+    if (round == totalRounds - 2) return 'WB Tứ kết';
+    return 'WB R$round';
+  }
+
+  int _log2(int n) {
+    var v = n, c = 0;
+    while (v > 1) {
+      v >>= 1;
+      c++;
+    }
+    return c;
+  }
+
   /// Tính lại stats + thứ hạng cho state hiện có. Dùng khi load từ disk
   /// để áp dụng tiebreaker mới nhất (nếu engine đổi). KHÔNG đụng fixtures,
   /// chỉ sort lại `state.players` và refresh stats.
   LeagueState recalculate(LeagueState state) {
     if (state.fixtures.isEmpty || state.players.isEmpty) return state;
+    // Double-elim không có aggregate ranking — bracket tự đại diện.
+    if (state.usesDoubleElim) return state;
     if (state.usesGroupStage) {
       return _syncGroupKnockout(state);
     }

@@ -8,6 +8,12 @@ enum LeagueStatus { setup, inProgress, finished }
 
 enum LeaguePhase { roundRobin, groupStage, knockout }
 
+/// Thể thức giải đấu.
+/// - [roundRobin]: vòng tròn 1 lần.
+/// - [groupKnockout]: vòng bảng + knockout.
+/// - [doubleElim]: đấu nhánh kép (Winners + Losers + Grand Final).
+enum LeagueFormat { roundRobin, groupKnockout, doubleElim }
+
 /// State của 1 giải đấu — immutable, copyWith.
 ///
 /// [id] unique theo từng giải (sinh ở `LeagueEngine.startTournament`).
@@ -22,6 +28,7 @@ class LeagueState {
     this.name = '',
     this.status = LeagueStatus.setup,
     this.phase = LeaguePhase.roundRobin,
+    this.format = LeagueFormat.roundRobin,
     this.groupSize = 0,
     List<LeaguePlayer> players = const [],
     List<LeagueGroup> groups = const [],
@@ -42,6 +49,7 @@ class LeagueState {
   final String name;
   final LeagueStatus status;
   final LeaguePhase phase;
+  final LeagueFormat format;
   final int groupSize;
   final List<LeaguePlayer> players;
   final List<LeagueGroup> groups;
@@ -52,7 +60,33 @@ class LeagueState {
 
   bool get isFinished => status == LeagueStatus.finished;
   bool get usesGroupStage => groups.isNotEmpty;
+  bool get usesDoubleElim => format == LeagueFormat.doubleElim;
   String get displayName => name.trim().isEmpty ? 'Giải đấu' : name.trim();
+
+  /// Trận thuộc nhánh thắng.
+  List<MatchFixture> get winnersFixtures => fixtures
+      .where((f) => f.bracketSide == BracketSide.winners)
+      .toList(growable: false);
+
+  /// Trận thuộc nhánh thua.
+  List<MatchFixture> get losersFixtures => fixtures
+      .where((f) => f.bracketSide == BracketSide.losers)
+      .toList(growable: false);
+
+  /// Trận chung kết tổng (đơn). null nếu chưa tạo / không phải doubleElim.
+  MatchFixture? get grandFinalFixture {
+    for (final f in fixtures) {
+      if (f.bracketSide == BracketSide.grandFinal) return f;
+    }
+    return null;
+  }
+
+  /// True khi cả WB Final + LB Final đã đá và GF đã đá xong.
+  bool get doubleElimComplete {
+    final gf = grandFinalFixture;
+    if (gf == null) return false;
+    return gf.isPlayed && gf.score1 != gf.score2;
+  }
 
   int get matchesTotal => fixtures.length;
   int get matchesPlayed => fixtures.where((f) => f.isPlayed).length;
@@ -82,14 +116,14 @@ class LeagueState {
     }
     // Nếu có trận tranh 3-4 → phải đá xong cả 2 mới coi knockout hoàn tất.
     final third = thirdPlaceFixture;
-    if (third != null &&
-        (!third.isPlayed || third.score1 == third.score2)) {
+    if (third != null && (!third.isPlayed || third.score1 == third.score2)) {
       return false;
     }
     return true;
   }
 
   String get phaseLabel {
+    if (usesDoubleElim) return 'Đấu nhánh';
     if (!usesGroupStage) return 'Vòng tròn';
     return switch (phase) {
       LeaguePhase.groupStage => 'Vòng bảng',
@@ -139,12 +173,22 @@ class LeagueState {
   static const _thirdPlaceRoundName = 'Tranh 3-4';
 
   String? get championId {
+    if (usesDoubleElim) {
+      final gf = grandFinalFixture;
+      if (gf == null || !gf.isPlayed || gf.score1 == gf.score2) return null;
+      return gf.score1 > gf.score2 ? gf.player1Id : gf.player2Id;
+    }
     final f = finalFixture;
     if (f == null || !f.isPlayed || f.score1 == f.score2) return null;
     return f.score1 > f.score2 ? f.player1Id : f.player2Id;
   }
 
   String? get runnerUpId {
+    if (usesDoubleElim) {
+      final gf = grandFinalFixture;
+      if (gf == null || !gf.isPlayed || gf.score1 == gf.score2) return null;
+      return gf.score1 > gf.score2 ? gf.player2Id : gf.player1Id;
+    }
     final f = finalFixture;
     if (f == null || !f.isPlayed || f.score1 == f.score2) return null;
     return f.score1 > f.score2 ? f.player2Id : f.player1Id;
@@ -171,6 +215,7 @@ class LeagueState {
     String? name,
     LeagueStatus? status,
     LeaguePhase? phase,
+    LeagueFormat? format,
     int? groupSize,
     List<LeaguePlayer>? players,
     List<LeagueGroup>? groups,
@@ -184,6 +229,7 @@ class LeagueState {
       name: name ?? this.name,
       status: status ?? this.status,
       phase: phase ?? this.phase,
+      format: format ?? this.format,
       groupSize: groupSize ?? this.groupSize,
       players: players ?? this.players,
       groups: groups ?? this.groups,
@@ -199,6 +245,7 @@ class LeagueState {
     'name': name,
     'status': status.name,
     'phase': phase.name,
+    'format': format.name,
     'groupSize': groupSize,
     'players': players.map((p) => p.toJson()).toList(),
     'groups': groups.map((g) => g.toJson()).toList(),
@@ -225,6 +272,7 @@ class LeagueState {
       );
     }
     final phase = _parsePhase(json['phase']);
+    final format = _parseFormat(json['format'], json);
     final startedAt = _parseDate(json['startedAt']);
     // Backward compat: payload cũ chưa có `id` → suy id từ startedAt để
     // không vỡ history và active leagues đã lưu từ phiên trước.
@@ -239,6 +287,7 @@ class LeagueState {
       name: json['name'] as String? ?? '',
       status: status,
       phase: phase,
+      format: format,
       groupSize: json['groupSize'] as int? ?? 0,
       players: (json['players'] as List<dynamic>? ?? const [])
           .map((e) => LeaguePlayer.fromJson(e as Map<String, dynamic>))
@@ -266,6 +315,29 @@ class LeagueState {
       orElse: () =>
           throw FormatException('LeagueState.fromJson: unknown phase "$name".'),
     );
+  }
+
+  /// Format có thể thiếu ở payload legacy → suy từ field khác: có `groups`
+  /// → groupKnockout, có `fixtures` với bracketSide != none → doubleElim,
+  /// còn lại → roundRobin.
+  static LeagueFormat _parseFormat(Object? raw, Map<String, dynamic> json) {
+    if (raw is String) {
+      for (final f in LeagueFormat.values) {
+        if (f.name == raw) return f;
+      }
+    }
+    final groups = json['groups'] as List<dynamic>? ?? const [];
+    if (groups.isNotEmpty) return LeagueFormat.groupKnockout;
+    final fixtures = json['fixtures'] as List<dynamic>? ?? const [];
+    for (final f in fixtures) {
+      if (f is Map<String, dynamic>) {
+        final b = f['bracketSide'];
+        if (b is String && b != BracketSide.none.name) {
+          return LeagueFormat.doubleElim;
+        }
+      }
+    }
+    return LeagueFormat.roundRobin;
   }
 
   static DateTime? _parseDate(Object? raw) {

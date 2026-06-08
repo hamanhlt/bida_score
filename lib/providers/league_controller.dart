@@ -67,13 +67,21 @@ class LeagueController extends Notifier<LeagueState> {
     String tournamentName = '',
     int? groupSize,
     List<List<String>>? manualGroups,
+    bool doubleElim = false,
   }) {
-    state = _engine.startTournament(
-      names,
-      tournamentName: tournamentName,
-      groupSize: groupSize,
-      manualGroups: manualGroups,
-    );
+    if (doubleElim) {
+      state = _engine.startDoubleElim(
+        names,
+        tournamentName: tournamentName,
+      );
+    } else {
+      state = _engine.startTournament(
+        names,
+        tournamentName: tournamentName,
+        groupSize: groupSize,
+        manualGroups: manualGroups,
+      );
+    }
     ref.read(leagueSessionControllerProvider.notifier).openCurrent(state.id);
   }
 

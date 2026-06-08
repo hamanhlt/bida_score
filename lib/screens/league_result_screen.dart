@@ -84,12 +84,14 @@ class LeagueResultScreen extends ConsumerWidget {
       );
     }
 
-    final champion = state.usesGroupStage
+    final champion = (state.usesGroupStage || state.usesDoubleElim)
         ? state.championPlayer
         : state.players.first;
     // Không trao "vô địch" nếu chưa đấu trận nào — champion sẽ là người
     // alphabet đầu tiên với 0 điểm, gây hiểu nhầm.
-    final showChampion = state.usesGroupStage
+    final showChampion = state.usesDoubleElim
+        ? champion != null && state.doubleElimComplete
+        : state.usesGroupStage
         ? champion != null && state.knockoutComplete
         : state.matchesPlayed > 0;
 
@@ -145,7 +147,9 @@ class LeagueResultScreen extends ConsumerWidget {
                   if (showChampion) ...[
                     _ChampionCard(
                       name: champion!.name,
-                      badgeText: state.usesGroupStage
+                      badgeText: state.usesDoubleElim
+                          ? 'Đấu nhánh'
+                          : state.usesGroupStage
                           ? 'Knockout'
                           : '${champion.points} điểm',
                     ),
@@ -153,7 +157,9 @@ class LeagueResultScreen extends ConsumerWidget {
                   ],
                   _StatsCard(state: state),
                   const SizedBox(height: 14),
-                  if (state.usesGroupStage) ...[
+                  if (state.usesDoubleElim) ...[
+                    _DoubleElimSummary(state: state),
+                  ] else if (state.usesGroupStage) ...[
                     LeagueGroupsStandingsView(state: state, scrollable: false),
                     _KnockoutSummary(state: state),
                   ] else
@@ -310,6 +316,95 @@ class _StatsCard extends StatelessWidget {
   }
 }
 
+/// Summary cho double-elim: list trận theo WB / LB / GF + champion.
+class _DoubleElimSummary extends StatelessWidget {
+  const _DoubleElimSummary({required this.state});
+
+  final LeagueState state;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.fixtures.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final nameById = {for (final p in state.players) p.id: p.name};
+    final wbByRound = <int, List<MatchFixture>>{};
+    final lbByRound = <int, List<MatchFixture>>{};
+    for (final f in state.winnersFixtures) {
+      wbByRound.putIfAbsent(f.roundIndex, () => []).add(f);
+    }
+    for (final f in state.losersFixtures) {
+      lbByRound.putIfAbsent(f.roundIndex, () => []).add(f);
+    }
+
+    Widget block(String title, Map<int, List<MatchFixture>> map) {
+      final rounds = map.keys.toList()..sort();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: AppColors.textDark,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final r in rounds) ...[
+            Text(
+              _roundTitle(map[r]!.first),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: AppColors.textBody,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            for (final f in map[r]!)
+              _KnockoutResultRow(
+                p1Name: nameById[f.player1Id] ?? '— TBD —',
+                p2Name: nameById[f.player2Id] ?? '— TBD —',
+                score: f.isPlayed ? '${f.score1} – ${f.score2}' : 'Chưa đấu',
+              ),
+            const SizedBox(height: 10),
+          ],
+        ],
+      );
+    }
+
+    final gf = state.grandFinalFixture;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        block('Nhánh thắng', wbByRound),
+        block('Nhánh thua', lbByRound),
+        if (gf != null) ...[
+          Text(
+            'Chung kết tổng',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: AppColors.textDark,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _KnockoutResultRow(
+            p1Name: nameById[gf.player1Id] ?? '— TBD —',
+            p2Name: nameById[gf.player2Id] ?? '— TBD —',
+            score: gf.isPlayed ? '${gf.score1} – ${gf.score2}' : 'Chưa đấu',
+          ),
+        ],
+      ],
+    );
+  }
+
+  String _roundTitle(MatchFixture fixture) {
+    return switch (fixture.bracketSide) {
+      BracketSide.winners => 'Lượt ${fixture.roundIndex}',
+      BracketSide.losers => 'Lượt ${fixture.roundIndex + 1}',
+      BracketSide.grandFinal => 'Chung kết tổng',
+      BracketSide.none => fixture.roundName,
+    };
+  }
+}
+
 class _KnockoutSummary extends StatelessWidget {
   const _KnockoutSummary({required this.state});
 
@@ -318,12 +413,13 @@ class _KnockoutSummary extends StatelessWidget {
   static const _thirdPlaceLabel = 'Tranh 3-4';
 
   List<List<MatchFixture>> _splitByRoundName(List<MatchFixture> fixtures) {
-    final main = fixtures.where((f) => f.roundName != _thirdPlaceLabel).toList();
-    final third = fixtures.where((f) => f.roundName == _thirdPlaceLabel).toList();
-    return [
-      if (main.isNotEmpty) main,
-      if (third.isNotEmpty) third,
-    ];
+    final main = fixtures
+        .where((f) => f.roundName != _thirdPlaceLabel)
+        .toList();
+    final third = fixtures
+        .where((f) => f.roundName == _thirdPlaceLabel)
+        .toList();
+    return [if (main.isNotEmpty) main, if (third.isNotEmpty) third];
   }
 
   @override

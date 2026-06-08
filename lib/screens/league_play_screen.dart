@@ -6,13 +6,14 @@ import '../models/league_state.dart';
 import '../models/match_fixture.dart';
 import '../providers/league_controller.dart';
 import '../theme/app_colors.dart';
+import '../widgets/bracket_tree.dart';
 import '../widgets/player_colors.dart';
 import '../widgets/table_background.dart';
 import 'league_standings_view.dart';
 
-/// Màn chính của giải đấu (status = inProgress) — 2 tab:
-/// 1. **Trận đấu**: list fixtures, tap để nhập/sửa tỷ số.
-/// 2. **Bảng xếp hạng**: realtime — recalculate sau mỗi updateScore.
+/// Màn chính của giải đấu (status = inProgress).
+/// - Vòng tròn / vòng bảng: 2 tab Trận đấu + Bảng xếp hạng.
+/// - Đấu nhánh kép: 1 màn lịch đấu để bracket có thêm chiều cao.
 ///
 /// AppBar action "Kết thúc giải" có confirm dialog → controller.finishTournament().
 class LeaguePlayScreen extends ConsumerWidget {
@@ -27,6 +28,81 @@ class LeaguePlayScreen extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
+    final scaffold = Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        backgroundColor: AppColors.primaryDark,
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
+        // Back về danh sách giải (active list giữ nguyên, giải vẫn ở đó).
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Về danh sách giải',
+          onPressed: () => controller.backToList(),
+        ),
+        title: Text(
+          '${state.displayName} · ${state.phaseLabel} · '
+          '${state.matchesPlayed}/${state.matchesTotal} trận',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
+          ),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Kết thúc giải',
+            icon: const Icon(Icons.flag_rounded),
+            onPressed: () => _confirmFinish(context, ref),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (action) async {
+              if (action == 'rename') {
+                await _renameLeague(context, ref);
+              } else if (action == 'cancel') {
+                final ok = await _confirmCancel(context);
+                if (ok == true) controller.cancelTournament();
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'rename', child: Text('Đổi tên giải')),
+              PopupMenuItem(value: 'cancel', child: Text('Huỷ giải')),
+            ],
+          ),
+        ],
+        bottom: state.usesDoubleElim
+            ? null
+            : const TabBar(
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white70,
+                indicatorColor: AppColors.accent,
+                indicatorWeight: 3,
+                tabs: [
+                  Tab(text: 'Trận đấu', icon: Icon(Icons.sports_rounded)),
+                  Tab(
+                    text: 'Bảng xếp hạng',
+                    icon: Icon(Icons.emoji_events_rounded),
+                  ),
+                ],
+              ),
+      ),
+      body: TableBackground(
+        child: SafeArea(
+          top: false,
+          child: state.usesDoubleElim
+              ? _FixturesTab(state: state)
+              : TabBarView(
+                  children: [
+                    _FixturesTab(state: state),
+                    state.usesGroupStage
+                        ? LeagueGroupsStandingsView(state: state)
+                        : LeagueStandingsView(players: state.players),
+                  ],
+                ),
+        ),
+      ),
+    );
+
     return PopScope(
       // Hardware back → quay về list (đồng nhất AppBar back).
       canPop: false,
@@ -34,79 +110,9 @@ class LeaguePlayScreen extends ConsumerWidget {
         if (didPop) return;
         controller.backToList();
       },
-      child: DefaultTabController(
-        length: 2,
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          appBar: AppBar(
-            backgroundColor: AppColors.primaryDark,
-            foregroundColor: Colors.white,
-            iconTheme: const IconThemeData(color: Colors.white),
-            // Back về danh sách giải (active list giữ nguyên, giải vẫn ở đó).
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              tooltip: 'Về danh sách giải',
-              onPressed: () => controller.backToList(),
-            ),
-            title: Text(
-              '${state.displayName} · ${state.phaseLabel} · '
-              '${state.matchesPlayed}/${state.matchesTotal} trận',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 16,
-              ),
-            ),
-            actions: [
-              IconButton(
-                tooltip: 'Kết thúc giải',
-                icon: const Icon(Icons.flag_rounded),
-                onPressed: () => _confirmFinish(context, ref),
-              ),
-              PopupMenuButton<String>(
-                onSelected: (action) async {
-                  if (action == 'rename') {
-                    await _renameLeague(context, ref);
-                  } else if (action == 'cancel') {
-                    final ok = await _confirmCancel(context);
-                    if (ok == true) controller.cancelTournament();
-                  }
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'rename', child: Text('Đổi tên giải')),
-                  PopupMenuItem(value: 'cancel', child: Text('Huỷ giải')),
-                ],
-              ),
-            ],
-            bottom: const TabBar(
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white70,
-              indicatorColor: AppColors.accent,
-              indicatorWeight: 3,
-              tabs: [
-                Tab(text: 'Trận đấu', icon: Icon(Icons.sports_rounded)),
-                Tab(
-                  text: 'Bảng xếp hạng',
-                  icon: Icon(Icons.emoji_events_rounded),
-                ),
-              ],
-            ),
-          ),
-          body: TableBackground(
-            child: SafeArea(
-              top: false,
-              child: TabBarView(
-                children: [
-                  _FixturesTab(state: state),
-                  state.usesGroupStage
-                      ? LeagueGroupsStandingsView(state: state)
-                      : LeagueStandingsView(players: state.players),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+      child: state.usesDoubleElim
+          ? scaffold
+          : DefaultTabController(length: 2, child: scaffold),
     );
   }
 
@@ -279,6 +285,10 @@ class _FixturesTab extends ConsumerWidget {
     // Mỗi người chơi 1 màu chữ ổn định (sort theo id) — easier scan.
     final colorById = assignPlayerColors(state.players.map((p) => p.id));
 
+    if (state.usesDoubleElim) {
+      return _buildDoubleElim(context, ref, nameById, colorById);
+    }
+
     if (state.usesGroupStage) {
       if (state.phase == LeaguePhase.groupStage) {
         return _buildGroupStage(context, ref, nameById, colorById);
@@ -390,6 +400,187 @@ class _FixturesTab extends ConsumerWidget {
     );
   }
 
+  Widget _buildDoubleElim(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, String> nameById,
+    Map<String, Color> colorById,
+  ) {
+    return _buildDoubleElimTree(context, ref, nameById, colorById);
+  }
+
+  Widget _buildDoubleElimTree(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, String> nameById,
+    Map<String, Color> colorById,
+  ) {
+    final wb = <int, List<MatchFixture>>{};
+    final lb = <int, List<MatchFixture>>{};
+    MatchFixture? gf;
+    for (final f in state.fixtures) {
+      switch (f.bracketSide) {
+        case BracketSide.winners:
+          wb.putIfAbsent(f.roundIndex, () => []).add(f);
+        case BracketSide.losers:
+          lb.putIfAbsent(f.roundIndex, () => []).add(f);
+        case BracketSide.grandFinal:
+          gf = f;
+        case BracketSide.none:
+          break;
+      }
+    }
+    final wbRounds = wb.keys.toList()..sort();
+    final lbRounds = lb.keys.toList()..sort();
+    final firstRound = wb[1] ?? const <MatchFixture>[];
+    final firstRoundComplete =
+        firstRound.isNotEmpty && firstRound.every((f) => f.isPlayed);
+    final wbTreeRoundNumbers = wbRounds;
+    final wbAsList = [for (final r in wbTreeRoundNumbers) wb[r]!];
+    final lbAsList = [for (final r in lbRounds) lb[r]!];
+
+    void openSheet(MatchFixture f) =>
+        _openScoreSheet(context, ref, f, nameById);
+
+    if (!firstRoundComplete) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(8, 12, 8, 20),
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: _InfoBanner(
+              title: 'Lượt 1',
+              subtitle:
+                  'Sơ đồ nhánh thắng đã tạo sẵn. Đấu hết lượt 1, nhánh thua '
+                  'sẽ mở bên dưới từ lượt 2.',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: _TournamentCup(title: state.displayName, subtitle: 'Lượt 1'),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: _SectionHeader(
+              title: 'Sơ đồ lượt 1',
+              subtitle:
+                  '${firstRound.where((f) => f.isPlayed).length}'
+                  '/${firstRound.length} trận · pinch để zoom',
+            ),
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            height: _bracketHeight(wbAsList),
+            child: BracketTree(
+              rounds: wbAsList,
+              roundLabels: [for (final r in wbTreeRoundNumbers) 'Lượt $r'],
+              nameById: nameById,
+              colorById: colorById,
+              onTap: openSheet,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 20),
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: _InfoBanner(
+            title: 'Lượt 1 đã xong',
+            subtitle:
+                'Từ lượt 2, người thắng đi nhánh thắng; người thua xuống nhánh thua.',
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: _TournamentCup(
+            title: state.displayName,
+            subtitle: state.championPlayer?.name ?? 'Chung kết tổng',
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: _SectionHeader(
+            title: 'Nhánh thắng',
+            subtitle:
+                '${state.winnersFixtures.where((f) => f.isPlayed).length}'
+                '/${state.winnersFixtures.length} trận · pinch để zoom',
+          ),
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: _bracketHeight(wbAsList),
+          child: BracketTree(
+            rounds: wbAsList,
+            roundLabels: [for (final r in wbTreeRoundNumbers) 'Lượt $r'],
+            nameById: nameById,
+            colorById: colorById,
+            onTap: openSheet,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: _SectionHeader(
+            title: 'Nhánh thua',
+            subtitle:
+                '${state.losersFixtures.where((f) => f.isPlayed).length}'
+                '/${state.losersFixtures.length} trận · pinch để zoom',
+          ),
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: _bracketHeight(lbAsList),
+          child: BracketTree(
+            rounds: lbAsList,
+            roundLabels: [for (final r in lbRounds) 'Lượt ${r + 1}'],
+            nameById: nameById,
+            colorById: colorById,
+            onTap: openSheet,
+          ),
+        ),
+        if (gf != null) ...[
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: _SectionHeader(
+              title: 'Chung kết tổng',
+              subtitle: gf.isReady
+                  ? 'Nhánh thắng vs nhánh thua'
+                  : 'Chờ kết quả',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: SizedBox(
+              width: 200,
+              child: _FixtureCard(
+                index: 1,
+                fixture: gf,
+                p1Name: nameById[gf.player1Id] ?? '— TBD —',
+                p2Name: nameById[gf.player2Id] ?? '— TBD —',
+                p1Color: colorById[gf.player1Id] ?? AppColors.textSubtle,
+                p2Color: colorById[gf.player2Id] ?? AppColors.textSubtle,
+                onTap: gf.isReady ? () => openSheet(gf!) : null,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  double _bracketHeight(List<List<MatchFixture>> rounds) {
+    return BracketTree.layoutHeight(rounds);
+  }
+
   List<Widget> _buildKnockoutRoundSections(
     BuildContext context,
     WidgetRef ref,
@@ -430,8 +621,7 @@ class _FixturesTab extends ConsumerWidget {
                   colorById[entry.value.player1Id] ?? AppColors.primaryDark,
               p2Color:
                   colorById[entry.value.player2Id] ?? AppColors.primaryDark,
-              onTap: () =>
-                  _openScoreSheet(context, ref, entry.value, nameById),
+              onTap: () => _openScoreSheet(context, ref, entry.value, nameById),
             ),
           ),
         );
@@ -628,6 +818,77 @@ class _InfoBanner extends StatelessWidget {
   }
 }
 
+class _TournamentCup extends StatelessWidget {
+  const _TournamentCup({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(maxWidth: 360),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        decoration: BoxDecoration(
+          color: AppColors.textDark,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppColors.accent.withAlpha(180), width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryDark.withAlpha(28),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 86,
+              height: 86,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3),
+              ),
+              child: const Icon(
+                Icons.emoji_events_rounded,
+                color: AppColors.textDark,
+                size: 54,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: AppColors.accent,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _FixtureCard extends StatelessWidget {
   const _FixtureCard({
     required this.index,
@@ -645,101 +906,130 @@ class _FixtureCard extends StatelessWidget {
   final String p2Name;
   final Color p1Color;
   final Color p2Color;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final p1Win = fixture.isPlayed && fixture.score1 > fixture.score2;
     final p2Win = fixture.isPlayed && fixture.score2 > fixture.score1;
-
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          child: Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryDark,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  '$index',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _NameRow(name: p1Name, color: p1Color, isWinner: p1Win),
-                    const SizedBox(height: 4),
-                    _NameRow(name: p2Name, color: p2Color, isWinner: p2Win),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              if (fixture.isPlayed)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent.withAlpha(50),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.accent.withAlpha(150)),
-                  ),
-                  child: Text(
-                    '${fixture.score1} – ${fixture.score2}',
-                    style: const TextStyle(
-                      color: AppColors.primaryDark,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    'Chưa đấu',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSubtle,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              const SizedBox(width: 6),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.textSubtle,
-              ),
-            ],
+    Widget indexBadge() {
+      return Container(
+        width: 28,
+        height: 28,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          color: AppColors.primaryDark,
+          shape: BoxShape.circle,
+        ),
+        child: Text(
+          '$index',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+            fontSize: 12,
           ),
         ),
-      ),
+      );
+    }
+
+    Widget namesColumn() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _NameRow(name: p1Name, color: p1Color, isWinner: p1Win),
+          const SizedBox(height: 4),
+          _NameRow(name: p2Name, color: p2Color, isWinner: p2Win),
+        ],
+      );
+    }
+
+    Widget statusBadge() {
+      if (fixture.isPlayed) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.accent.withAlpha(50),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.accent.withAlpha(150)),
+          ),
+          child: Text(
+            '${fixture.score1} – ${fixture.score2}',
+            style: const TextStyle(
+              color: AppColors.primaryDark,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        );
+      }
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: AppColors.border,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          'Chưa đấu',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: AppColors.textSubtle,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 260;
+        return Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: compact
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            indexBadge(),
+                            const SizedBox(width: 10),
+                            Expanded(child: namesColumn()),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: statusBadge(),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        indexBadge(),
+                        const SizedBox(width: 12),
+                        Expanded(child: namesColumn()),
+                        const SizedBox(width: 12),
+                        Flexible(flex: 0, child: statusBadge()),
+                        if (onTap != null) ...[
+                          const SizedBox(width: 6),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: AppColors.textSubtle,
+                          ),
+                        ],
+                      ],
+                    ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
