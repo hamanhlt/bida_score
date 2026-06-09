@@ -56,18 +56,23 @@ lib/
      (single-elim + tranh 3-4). Engine xử lý seeding + knockout
      advancement; trận tranh 3-4 sinh tự động khi bán kết kết thúc
      (roundName `Tranh 3-4`, cùng roundIndex với chung kết).
-  3. **Đấu nhánh kép (double-elim)**: N ∈ {8, 16, 32}. Engine sinh
-     trước TOÀN BỘ bracket (nhánh thắng + nhánh thua + GF) với placeholder slot — fill
-     dần qua source linkage (`sourceWinnerOfP*Id`, `sourceLoserOfP*Id`).
-     Mỗi `updateScore` cascade fill các dependent fixtures; `clearScore`
+  3. **Đấu nhánh kép (double-elim hybrid)**: N ∈ {8, 16, 32}. Setup nhập
+     thủ công từng cặp đấu lượt 1 (không random). Engine sinh trước TOÀN BỘ
+     bracket (nhánh thắng + nhánh thua + GF) với placeholder slot — fill dần
+     qua source linkage (`sourceWinnerOfP*Id`, `sourceLoserOfP*Id`).
+     Luật hybrid: chỉ loser của WB lượt 1-2 xuống LB; từ WB lượt 3 trở đi
+     ai thua bị loại luôn. LB sau khi nhận loser WB R2 chạy single-elim để
+     lấy người vào GF. Tổng trận: 8 người = 13, 16 người = 27, 32 người = 55.
+     Mỗi `updateScore` cascade fill lại dependent fixtures; nếu sửa winner/
+     loser thì invalidate descendants để GF không giữ slot cũ. `clearScore`
      đệ quy invalidate descendants.
-     Play screen có toggle list/tree (`_bracketViewModeProvider`, in-memory):
-     - List view: WB → LB → GF dọc, mỗi round 1 section header.
-     - Tree view (default): widget [`BracketTree`](lib/widgets/bracket_tree.dart)
-       render WB dạng cây (Stack + Positioned cards + CustomPaint vẽ đường
-       nối "└┐"); wrap `InteractiveViewer` cho pinch zoom + pan. LB render
-       bằng `_LosersBracketColumns` (horizontal scroll columns, KHÔNG đường
-       nối — vì intake rounds nhận thua cross-bracket từ WB). GF: 1 card.
+     Play screen double-elim KHÔNG có tab Bảng xếp hạng để bracket rộng hơn
+     và luôn render tree bằng [`BracketTree`](lib/widgets/bracket_tree.dart):
+     WB/LB đều là Stack + Positioned cards + CustomPaint vẽ đường nối, wrap
+     `InteractiveViewer` cho pinch zoom + pan; GF là 1 card riêng. Trước khi
+     xong lượt 1 chỉ hiện cây WB; sau lượt 1 mới mở thêm LB bên dưới. Nhãn
+     round cuối hiển thị `Bán kết`, round ngay trước đó là `Tứ kết` nếu N > 8
+     (riêng 8 người không ghi Tứ kết). Winner trong card tree có icon cúp.
   Tap 1 fixture → bottom sheet nhập tỷ số → `LeagueController.updateScore` →
   engine recalculate leaderboard hoặc cascade bracket → listenSelf upsert
   vào active list.

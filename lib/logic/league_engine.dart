@@ -389,7 +389,9 @@ class LeagueEngine {
 
     final n = players.length;
     final m = _log2(n); // số vòng WB
-    final lbRoundCount = 2 * m - 2;
+    // Luật app: chỉ lượt 1-2 của nhánh thắng còn "2 mạng". Từ lượt 3
+    // trở đi, ai thua bị loại luôn; nhánh thua sau đó chạy single-elim.
+    final lbRoundCount = m;
     final fixtures = <MatchFixture>[];
 
     // WB R1: real players.
@@ -446,15 +448,13 @@ class LeagueEngine {
       );
     }
 
-    // LB R2..R(2m-2): xen kẽ intake (chẵn) / pure (lẻ).
+    // LB R2 nhận loser của WB R2. Từ LB R3 trở đi chỉ lấy winner nội bộ LB.
     for (var lbR = 2; lbR <= lbRoundCount; lbR++) {
-      final count = 1 << (m - 2 - ((lbR - 1) ~/ 2));
-      final isIntake = lbR.isEven;
+      final count = lbR == 2 ? lbR1Count : 1 << (m - lbR);
       final isLBFinal = lbR == lbRoundCount;
-      final roundName = isLBFinal ? 'LB Chung kết' : 'LB R$lbR';
+      final roundName = isLBFinal ? 'LB Bán kết' : 'LB R$lbR';
       for (var i = 0; i < count; i++) {
-        if (isIntake) {
-          final wbSourceRound = lbR ~/ 2 + 1;
+        if (lbR == 2) {
           fixtures.add(
             MatchFixture(
               id: 'lb_r${lbR}_m${i + 1}',
@@ -465,7 +465,7 @@ class LeagueEngine {
               roundIndex: lbR,
               roundName: roundName,
               sourceWinnerOfP1Id: 'lb_r${lbR - 1}_m${i + 1}',
-              sourceLoserOfP2Id: 'wb_r${wbSourceRound}_m${i + 1}',
+              sourceLoserOfP2Id: 'wb_r2_m${i + 1}',
             ),
           );
         } else {
@@ -541,15 +541,30 @@ class LeagueEngine {
     }
     if (state.status != LeagueStatus.inProgress) return state;
 
-    final newFixtures = [...state.fixtures];
+    final oldWinnerId = fixture.isPlayed
+        ? (fixture.score1 > fixture.score2
+              ? fixture.player1Id
+              : fixture.player2Id)
+        : null;
+    final oldLoserId = fixture.isPlayed
+        ? (fixture.score1 > fixture.score2
+              ? fixture.player2Id
+              : fixture.player1Id)
+        : null;
+    final winnerId = score1 > score2 ? fixture.player1Id : fixture.player2Id;
+    final loserId = score1 > score2 ? fixture.player2Id : fixture.player1Id;
+
+    var newFixtures = [...state.fixtures];
     newFixtures[idx] = fixture.copyWith(
       score1: score1,
       score2: score2,
       isPlayed: true,
     );
 
-    final winnerId = score1 > score2 ? fixture.player1Id : fixture.player2Id;
-    final loserId = score1 > score2 ? fixture.player2Id : fixture.player1Id;
+    if (fixture.isPlayed &&
+        (oldWinnerId != winnerId || oldLoserId != loserId)) {
+      newFixtures = _invalidateDescendants(newFixtures, fixtureId);
+    }
     final cascaded = _cascadeDoubleElim(
       newFixtures,
       finishedFixtureId: fixtureId,
@@ -578,7 +593,8 @@ class LeagueEngine {
     return state.copyWith(fixtures: fixtures);
   }
 
-  /// Fill placeholder slot ở các fixture phụ thuộc khi 1 trận có kết quả.
+  /// Fill lại slot ở các fixture phụ thuộc khi 1 trận có kết quả. Nếu slot
+  /// đổi người chơi thì kết quả cũ của fixture đó và các con phải bị xoá.
   List<MatchFixture> _cascadeDoubleElim(
     List<MatchFixture> fixtures, {
     required String finishedFixtureId,
@@ -591,18 +607,25 @@ class LeagueEngine {
       if (f.id == finishedFixtureId) continue;
       var p1 = f.player1Id;
       var p2 = f.player2Id;
-      if (p1.isEmpty && f.sourceWinnerOfP1Id == finishedFixtureId) {
+      if (f.sourceWinnerOfP1Id == finishedFixtureId) {
         p1 = winnerId;
-      } else if (p1.isEmpty && f.sourceLoserOfP1Id == finishedFixtureId) {
+      } else if (f.sourceLoserOfP1Id == finishedFixtureId) {
         p1 = loserId;
       }
-      if (p2.isEmpty && f.sourceWinnerOfP2Id == finishedFixtureId) {
+      if (f.sourceWinnerOfP2Id == finishedFixtureId) {
         p2 = winnerId;
-      } else if (p2.isEmpty && f.sourceLoserOfP2Id == finishedFixtureId) {
+      } else if (f.sourceLoserOfP2Id == finishedFixtureId) {
         p2 = loserId;
       }
       if (p1 != f.player1Id || p2 != f.player2Id) {
-        next[i] = f.copyWith(player1Id: p1, player2Id: p2);
+        next[i] = f.copyWith(
+          player1Id: p1,
+          player2Id: p2,
+          score1: 0,
+          score2: 0,
+          isPlayed: false,
+        );
+        _invalidateDescendantsInPlace(next, f.id);
       }
     }
     return next;

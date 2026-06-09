@@ -323,6 +323,14 @@ class _BracketRow extends StatelessWidget {
             ),
           ),
         ),
+        if (isWinner) ...[
+          const SizedBox(width: 4),
+          const Icon(
+            Icons.emoji_events_rounded,
+            size: 13,
+            color: AppColors.trophyGold,
+          ),
+        ],
         if (score.isNotEmpty) ...[
           const SizedBox(width: 6),
           Container(

@@ -336,8 +336,13 @@ class _DoubleElimSummary extends StatelessWidget {
       lbByRound.putIfAbsent(f.roundIndex, () => []).add(f);
     }
 
-    Widget block(String title, Map<int, List<MatchFixture>> map) {
+    Widget block(
+      String title,
+      Map<int, List<MatchFixture>> map, {
+      required bool losers,
+    }) {
       final rounds = map.keys.toList()..sort();
+      final labels = _roundLabels(rounds, losers: losers);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -349,16 +354,16 @@ class _DoubleElimSummary extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          for (final r in rounds) ...[
+          for (final entry in rounds.asMap().entries) ...[
             Text(
-              _roundTitle(map[r]!.first),
+              labels[entry.key],
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: AppColors.textBody,
                 fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 6),
-            for (final f in map[r]!)
+            for (final f in map[entry.value]!)
               _KnockoutResultRow(
                 p1Name: nameById[f.player1Id] ?? '— TBD —',
                 p2Name: nameById[f.player2Id] ?? '— TBD —',
@@ -374,8 +379,8 @@ class _DoubleElimSummary extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        block('Nhánh thắng', wbByRound),
-        block('Nhánh thua', lbByRound),
+        block('Nhánh thắng', wbByRound, losers: false),
+        block('Nhánh thua', lbByRound, losers: true),
         if (gf != null) ...[
           Text(
             'Chung kết tổng',
@@ -395,13 +400,24 @@ class _DoubleElimSummary extends StatelessWidget {
     );
   }
 
-  String _roundTitle(MatchFixture fixture) {
-    return switch (fixture.bracketSide) {
-      BracketSide.winners => 'Lượt ${fixture.roundIndex}',
-      BracketSide.losers => 'Lượt ${fixture.roundIndex + 1}',
-      BracketSide.grandFinal => 'Chung kết tổng',
-      BracketSide.none => fixture.roundName,
-    };
+  List<String> _roundLabels(List<int> rounds, {required bool losers}) {
+    if (rounds.isEmpty) return const [];
+    final finalRound = rounds.last;
+    return [
+      for (final round in rounds)
+        _roundLabel(round, finalRound: finalRound, losers: losers),
+    ];
+  }
+
+  String _roundLabel(
+    int round, {
+    required int finalRound,
+    required bool losers,
+  }) {
+    if (round == finalRound) return 'Bán kết';
+    if (state.players.length > 8 && round == finalRound - 1) return 'Tứ kết';
+    final displayRound = losers ? round + 1 : round;
+    return 'Lượt $displayRound';
   }
 }
 

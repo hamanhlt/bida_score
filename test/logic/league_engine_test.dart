@@ -1034,7 +1034,7 @@ void main() {
       );
     });
 
-    test('startDoubleElim N=8: tổng 14 trận (7 WB + 6 LB + 1 GF)', () {
+    test('startDoubleElim N=8: tổng 13 trận (7 WB + 5 LB + 1 GF)', () {
       final local = LeagueEngine(rng: Random(1));
       final state = local.startDoubleElim(
         List.generate(8, (i) => 'P${i + 1}'),
@@ -1042,9 +1042,9 @@ void main() {
       );
       expect(state.usesDoubleElim, isTrue);
       expect(state.format, LeagueFormat.doubleElim);
-      expect(state.fixtures, hasLength(14));
+      expect(state.fixtures, hasLength(13));
       expect(state.winnersFixtures, hasLength(7)); // 4+2+1
-      expect(state.losersFixtures, hasLength(6)); // 2+2+1+1
+      expect(state.losersFixtures, hasLength(5)); // 2+2+1
       expect(state.grandFinalFixture, isNotNull);
 
       // WB R1: 4 trận, players điền đầy đủ.
@@ -1078,17 +1078,25 @@ void main() {
       // GF placeholder.
       final gf = state.grandFinalFixture!;
       expect(gf.sourceWinnerOfP1Id, 'wb_r3_m1');
-      expect(gf.sourceWinnerOfP2Id, 'lb_r4_m1');
+      expect(gf.sourceWinnerOfP2Id, 'lb_r3_m1');
+      expect(
+        state.fixtures.any(
+          (f) =>
+              f.sourceLoserOfP1Id == 'wb_r3_m1' ||
+              f.sourceLoserOfP2Id == 'wb_r3_m1',
+        ),
+        isFalse,
+      );
     });
 
-    test('startDoubleElim N=16: tổng 30 trận (15 WB + 14 LB + 1 GF)', () {
+    test('startDoubleElim N=16: tổng 27 trận (15 WB + 11 LB + 1 GF)', () {
       final local = LeagueEngine(rng: Random(1));
       final state = local.startDoubleElim(
         List.generate(16, (i) => 'P${i + 1}'),
       );
-      expect(state.fixtures, hasLength(30));
+      expect(state.fixtures, hasLength(27));
       expect(state.winnersFixtures, hasLength(15)); // 8+4+2+1
-      expect(state.losersFixtures, hasLength(14)); // 4+4+2+2+1+1
+      expect(state.losersFixtures, hasLength(11)); // 4+4+2+1
     });
 
     test(
@@ -1192,6 +1200,57 @@ void main() {
       expect(wbR2.player2Id, c);
       final lbR1 = state.fixtures.firstWhere((f) => f.id == 'lb_r1_m1');
       expect(lbR1.player1Id, isEmpty);
+    });
+
+    test('sửa winner double-elim reset slot chung kết tổng bị phụ thuộc', () {
+      final local = LeagueEngine(rng: Random(1));
+      var state = local.startDoubleElim(List.generate(8, (i) => 'P${i + 1}'));
+
+      String idOf(String name) =>
+          state.players.firstWhere((p) => p.name == name).id;
+
+      void play(String fixtureId, String winnerId) {
+        final f = state.fixtures.firstWhere((x) => x.id == fixtureId);
+        final p1Wins = f.player1Id == winnerId;
+        state = local.updateScore(
+          state,
+          fixtureId,
+          p1Wins ? 5 : 1,
+          p1Wins ? 1 : 5,
+        );
+      }
+
+      final p1 = idOf('P1');
+      final p4 = idOf('P4');
+      final p5 = idOf('P5');
+      final p6 = idOf('P6');
+
+      play('wb_r1_m1', p1);
+      play('wb_r1_m2', idOf('P3'));
+      play('wb_r1_m3', p5);
+      play('wb_r1_m4', idOf('P7'));
+      play('wb_r2_m1', p1);
+      play('wb_r2_m2', p5);
+      play('lb_r1_m1', p4);
+      play('lb_r1_m2', p6);
+      play('lb_r2_m1', p4);
+      play('lb_r2_m2', p6);
+      play('lb_r3_m1', p6);
+      play('wb_r3_m1', p5);
+
+      expect(state.grandFinalFixture!.player1Id, p5);
+      expect(state.grandFinalFixture!.player2Id, p6);
+      play('gf_1', p5);
+      expect(state.grandFinalFixture!.isPlayed, isTrue);
+
+      // Đổi kết quả LB R3: P4 mới là người vào chung kết tổng. GF đã đá nên
+      // phải reset và không được giữ P6 cũ ở slot nhánh thua.
+      play('lb_r3_m1', p4);
+
+      final gfAfterEdit = state.grandFinalFixture!;
+      expect(gfAfterEdit.player1Id, p5);
+      expect(gfAfterEdit.player2Id, p4);
+      expect(gfAfterEdit.isPlayed, isFalse);
     });
   });
 }

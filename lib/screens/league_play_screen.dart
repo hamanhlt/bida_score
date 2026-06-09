@@ -475,7 +475,10 @@ class _FixturesTab extends ConsumerWidget {
             height: _bracketHeight(wbAsList),
             child: BracketTree(
               rounds: wbAsList,
-              roundLabels: [for (final r in wbTreeRoundNumbers) 'Lượt $r'],
+              roundLabels: _doubleElimRoundLabels(
+                wbTreeRoundNumbers,
+                losers: false,
+              ),
               nameById: nameById,
               colorById: colorById,
               onTap: openSheet,
@@ -519,7 +522,10 @@ class _FixturesTab extends ConsumerWidget {
           height: _bracketHeight(wbAsList),
           child: BracketTree(
             rounds: wbAsList,
-            roundLabels: [for (final r in wbTreeRoundNumbers) 'Lượt $r'],
+            roundLabels: _doubleElimRoundLabels(
+              wbTreeRoundNumbers,
+              losers: false,
+            ),
             nameById: nameById,
             colorById: colorById,
             onTap: openSheet,
@@ -540,7 +546,7 @@ class _FixturesTab extends ConsumerWidget {
           height: _bracketHeight(lbAsList),
           child: BracketTree(
             rounds: lbAsList,
-            roundLabels: [for (final r in lbRounds) 'Lượt ${r + 1}'],
+            roundLabels: _doubleElimRoundLabels(lbRounds, losers: true),
             nameById: nameById,
             colorById: colorById,
             onTap: openSheet,
@@ -579,6 +585,29 @@ class _FixturesTab extends ConsumerWidget {
 
   double _bracketHeight(List<List<MatchFixture>> rounds) {
     return BracketTree.layoutHeight(rounds);
+  }
+
+  List<String> _doubleElimRoundLabels(
+    List<int> rounds, {
+    required bool losers,
+  }) {
+    if (rounds.isEmpty) return const [];
+    final finalRound = rounds.last;
+    return [
+      for (final round in rounds)
+        _doubleElimRoundLabel(round, finalRound: finalRound, losers: losers),
+    ];
+  }
+
+  String _doubleElimRoundLabel(
+    int round, {
+    required int finalRound,
+    required bool losers,
+  }) {
+    if (round == finalRound) return 'Bán kết';
+    if (state.players.length > 8 && round == finalRound - 1) return 'Tứ kết';
+    final displayRound = losers ? round + 1 : round;
+    return 'Lượt $displayRound';
   }
 
   List<Widget> _buildKnockoutRoundSections(
