@@ -358,19 +358,19 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                               unselectedLabelColor: AppColors.textSubtle,
                               indicatorColor: AppColors.accent,
                               indicatorWeight: 3,
-                              isScrollable: true,
-                              tabs: const [
-                                Tab(
-                                  text: 'Vòng tròn',
-                                  icon: Icon(Icons.table_rows_rounded),
+                              labelPadding: EdgeInsets.zero,
+                              tabs: [
+                                _ModeTab(
+                                  label: 'Đấu vòng tròn',
+                                  assetPath: 'assets/dau_vong_tron.png',
                                 ),
-                                Tab(
-                                  text: 'Vòng bảng',
-                                  icon: Icon(Icons.account_tree_rounded),
+                                _ModeTab(
+                                  label: 'Đấu bảng',
+                                  assetPath: 'assets/dau_bang.png',
                                 ),
-                                Tab(
-                                  text: 'Đấu nhánh',
-                                  icon: Icon(Icons.hub_rounded),
+                                _ModeTab(
+                                  label: 'Đấu nhánh\nthắng - thua',
+                                  assetPath: 'assets/dau_nhanh_thang_thua.png',
                                 ),
                               ],
                             ),
@@ -737,6 +737,49 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     if (index >= 0 && index < letters.length) return letters[index];
     return '${index + 1}';
+  }
+}
+
+class _ModeTab extends StatelessWidget {
+  const _ModeTab({required this.label, required this.assetPath});
+
+  final String label;
+  final String assetPath;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 82,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox.square(
+              dimension: 38,
+              child: Image.asset(
+                assetPath,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (_, _, _) =>
+                    const Icon(Icons.category_rounded, size: 30),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+                height: 1.1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

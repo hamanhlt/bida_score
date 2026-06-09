@@ -91,6 +91,9 @@ flutter:
   assets:
     - assets/logo_bida_score.png
     - assets/banner.jpg
+    - assets/dau_vong_tron.png
+    - assets/dau_bang.png
+    - assets/dau_nhanh_thang_thua.png
     - assets/ball/
 
   # An image asset can refer to one or more resolution-specific "variants", see
