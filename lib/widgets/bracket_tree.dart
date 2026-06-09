@@ -17,6 +17,7 @@ class BracketTree extends StatelessWidget {
     required this.colorById,
     required this.onTap,
     this.roundLabels,
+    this.interactive = true,
   });
 
   /// `rounds[r]` là list fixture của round r (0-indexed). Mỗi fixture round
@@ -29,6 +30,10 @@ class BracketTree extends StatelessWidget {
 
   /// Nhãn hiển thị phía trên mỗi cột. Nếu null thì lấy từ `fixture.roundName`.
   final List<String>? roundLabels;
+
+  /// Khi `false` → KHÔNG wrap `InteractiveViewer`. Dùng khi nhúng vào
+  /// layout có sẵn pan/zoom (vd butterfly view ghép WB + cúp + LB).
+  final bool interactive;
 
   static const double cardW = 160;
   static const double cardH = 60;
@@ -100,52 +105,55 @@ class BracketTree extends StatelessWidget {
     final totalH = layoutHeight(rounds);
     final totalW = rounds.length * (cardW + colGap) - colGap;
 
+    final inner = SizedBox(
+      width: totalW + 8,
+      height: totalH,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _BracketLinesPainter(
+                rounds: rounds,
+                matchTops: matchTops,
+              ),
+            ),
+          ),
+          for (var r = 0; r < rounds.length; r++)
+            Positioned(
+              left: columnX(r),
+              top: 0,
+              width: cardW,
+              child: _RoundHeader(
+                label: roundLabels != null && r < roundLabels!.length
+                    ? roundLabels![r]
+                    : (rounds[r].isNotEmpty ? rounds[r].first.roundName : ''),
+              ),
+            ),
+          for (var r = 0; r < rounds.length; r++)
+            for (var i = 0; i < rounds[r].length; i++)
+              Positioned(
+                left: columnX(r),
+                top: matchTops[r][i],
+                width: cardW,
+                height: cardH,
+                child: _BracketMatchCard(
+                  fixture: rounds[r][i],
+                  nameById: nameById,
+                  colorById: colorById,
+                  onTap: () => onTap(rounds[r][i]),
+                ),
+              ),
+        ],
+      ),
+    );
+
+    if (!interactive) return inner;
     return InteractiveViewer(
       minScale: 0.4,
       maxScale: 2.0,
       boundaryMargin: const EdgeInsets.all(80),
       constrained: false,
-      child: SizedBox(
-        width: totalW + 8,
-        height: totalH,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _BracketLinesPainter(
-                  rounds: rounds,
-                  matchTops: matchTops,
-                ),
-              ),
-            ),
-            for (var r = 0; r < rounds.length; r++)
-              Positioned(
-                left: columnX(r),
-                top: 0,
-                width: cardW,
-                child: _RoundHeader(
-                  label: roundLabels != null && r < roundLabels!.length
-                      ? roundLabels![r]
-                      : (rounds[r].isNotEmpty ? rounds[r].first.roundName : ''),
-                ),
-              ),
-            for (var r = 0; r < rounds.length; r++)
-              for (var i = 0; i < rounds[r].length; i++)
-                Positioned(
-                  left: columnX(r),
-                  top: matchTops[r][i],
-                  width: cardW,
-                  height: cardH,
-                  child: _BracketMatchCard(
-                    fixture: rounds[r][i],
-                    nameById: nameById,
-                    colorById: colorById,
-                    onTap: () => onTap(rounds[r][i]),
-                  ),
-                ),
-          ],
-        ),
-      ),
+      child: inner,
     );
   }
 }

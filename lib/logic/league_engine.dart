@@ -698,9 +698,8 @@ class LeagueEngine {
   }
 
   String _wbRoundName(int round, int totalRounds) {
-    if (round == totalRounds) return 'WB Chung kết';
-    if (round == totalRounds - 1) return 'WB Bán kết';
-    if (round == totalRounds - 2) return 'WB Tứ kết';
+    if (round == totalRounds) return 'WB Bán kết';
+    if (totalRounds > 3 && round == totalRounds - 1) return 'WB Tứ kết';
     return 'WB R$round';
   }
 

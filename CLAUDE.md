@@ -73,6 +73,19 @@ lib/
      xong lượt 1 chỉ hiện cây WB; sau lượt 1 mới mở thêm LB bên dưới. Nhãn
      round cuối hiển thị `Bán kết`, round ngay trước đó là `Tứ kết` nếu N > 8
      (riêng 8 người không ghi Tứ kết). Winner trong card tree có icon cúp.
+     **Result screen** double-elim (cả `!isFromHistory` lẫn Lịch sử giải)
+     render sơ đồ **butterfly** giống ảnh 1cue.vn: WB `BracketTree`
+     (`interactive: false`) bên TRÁI → `_CenterPodium` (🏆 + champion + GF
+     score pill + á quân) ở giữa → `_MirroredLbColumns` bên PHẢI (LB R1 ở
+     ngoài cùng, LB Final cạnh cúp). Toàn bộ Row wrap chung 1
+     `InteractiveViewer` cho pan/zoom đồng bộ; chiều cao stage = max(WB
+     height, LB height). `BracketTree.interactive` flag để skip nested
+     InteractiveViewer khi nhúng vào layout này.
+     Score pill ở `_CenterPodium` luôn hiển thị **championScore – runnerUpScore**
+     (so sánh `champion.id` với `fixture.player1Id`), KHÔNG dùng
+     `fixture.score1 – fixture.score2` thô — tránh user đọc nhầm theo thứ
+     tự p1/p2 fixture order (vd LB winner đánh bại WB winner trong GF: pill
+     phải hiện "2 – 1" champion first, không phải "1 – 2" theo p1/p2).
   Tap 1 fixture → bottom sheet nhập tỷ số → `LeagueController.updateScore` →
   engine recalculate leaderboard hoặc cascade bracket → listenSelf upsert
   vào active list.
