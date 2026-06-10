@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/cash_game_state.dart';
+import '../models/game_mode.dart';
 import '../models/match_result.dart';
 import '../theme/app_colors.dart';
 import '../widgets/round_history_view.dart';
@@ -15,6 +17,7 @@ class MatchDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isMoney = match.modeLabel == GameMode.cashGame.label;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -64,6 +67,7 @@ class MatchDetailScreen extends StatelessWidget {
                             rank: i + 1,
                             name: match.players[i].name,
                             score: match.players[i].score,
+                            isMoney: isMoney,
                           ),
                         ),
                     ],
@@ -248,11 +252,13 @@ class _PlayerScoreRow extends StatelessWidget {
     required this.rank,
     required this.name,
     required this.score,
+    required this.isMoney,
   });
 
   final int rank;
   final String name;
   final int score;
+  final bool isMoney;
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +307,7 @@ class _PlayerScoreRow extends StatelessWidget {
           ),
         ),
         Text(
-          score > 0 ? '+$score' : '$score',
+          _formatScore(score),
           style: TextStyle(
             color: scoreColor,
             fontWeight: FontWeight.w900,
@@ -311,5 +317,13 @@ class _PlayerScoreRow extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  String _formatScore(int s) {
+    if (!isMoney) return s > 0 ? '+$s' : '$s';
+    final value = formatVnd(s.abs());
+    if (s > 0) return '+$value';
+    if (s < 0) return '-$value';
+    return value;
   }
 }

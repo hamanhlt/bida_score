@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/cash_game_state.dart';
 import '../models/game_mode.dart';
 import '../models/league_state.dart';
 import '../models/match_result.dart';
@@ -504,6 +505,7 @@ class _MatchCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isMoney = match.modeLabel == GameMode.cashGame.label;
     // Có chi tiết (Bắn đền: lượt ghi điểm; race-to-X: winner từng rack) → tap mở.
     final tappable = match.events.isNotEmpty || match.rackWinners.isNotEmpty;
 
@@ -564,7 +566,12 @@ class _MatchCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           for (var i = 0; i < match.players.length; i++) ...[
-            _PlayerRow(rank: i + 1, player: match.players[i], isWinner: i == 0),
+            _PlayerRow(
+              rank: i + 1,
+              player: match.players[i],
+              isWinner: i == 0,
+              isMoney: isMoney,
+            ),
             if (i != match.players.length - 1) const SizedBox(height: 6),
           ],
         ],
@@ -613,11 +620,13 @@ class _PlayerRow extends StatelessWidget {
     required this.rank,
     required this.player,
     required this.isWinner,
+    required this.isMoney,
   });
 
   final int rank;
   final MatchPlayerResult player;
   final bool isWinner;
+  final bool isMoney;
 
   @override
   Widget build(BuildContext context) {
@@ -678,5 +687,11 @@ class _PlayerRow extends StatelessWidget {
     );
   }
 
-  String _formatScore(int s) => s > 0 ? '+$s' : '$s';
+  String _formatScore(int s) {
+    if (!isMoney) return s > 0 ? '+$s' : '$s';
+    final value = formatVnd(s.abs());
+    if (s > 0) return '+$value';
+    if (s < 0) return '-$value';
+    return value;
+  }
 }
