@@ -210,7 +210,7 @@ class _RackSettlementBar extends StatelessWidget {
     final currentText = state.canSettleRack
         ? 'Sau chốt: ${state.playerNames[0]} ${formatVnd(after0)} đ'
               ' · ${state.playerNames[1]} ${formatVnd(after1)} đ'
-        : 'Chưa có lỗ 10/hiệu số để chốt';
+        : 'Chưa có ván/lỗ 10 mới để chốt';
 
     return SizedBox(
       height: isLandscape ? 46 : 62,

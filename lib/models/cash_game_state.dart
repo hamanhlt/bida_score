@@ -25,16 +25,19 @@ class CashGameSnapshot {
     required List<int> balls,
     required List<CashGameRackResult> rackResults,
     required List<int> settledOffsets,
+    required List<int> settledRackWins,
     required this.status,
   }) : rackWins = List.unmodifiable(rackWins),
        balls = List.unmodifiable(balls),
        rackResults = List.unmodifiable(rackResults),
-       settledOffsets = List.unmodifiable(settledOffsets);
+       settledOffsets = List.unmodifiable(settledOffsets),
+       settledRackWins = List.unmodifiable(settledRackWins);
 
   final List<int> rackWins;
   final List<int> balls;
   final List<CashGameRackResult> rackResults;
   final List<int> settledOffsets;
+  final List<int> settledRackWins;
   final CashGameStatus status;
 }
 
@@ -45,6 +48,7 @@ class CashGameState {
     List<int> balls = const [],
     List<CashGameRackResult> rackResults = const [],
     List<int> settledOffsets = const [],
+    List<int> settledRackWins = const [],
     this.moneyPerRack = 40000,
     this.moneyPerBall = 20000,
     this.status = CashGameStatus.setup,
@@ -67,6 +71,11 @@ class CashGameState {
              ? List.filled(playerNames.length, 0)
              : settledOffsets,
        ),
+       settledRackWins = List.unmodifiable(
+         settledRackWins.isEmpty && playerNames.isNotEmpty
+             ? List.filled(playerNames.length, 0)
+             : settledRackWins,
+       ),
        history = List.unmodifiable(history);
 
   factory CashGameState.initial() => CashGameState();
@@ -85,6 +94,7 @@ class CashGameState {
       balls: snapshot.balls,
       rackResults: snapshot.rackResults,
       settledOffsets: snapshot.settledOffsets,
+      settledRackWins: snapshot.settledRackWins,
       moneyPerRack: moneyPerRack,
       moneyPerBall: moneyPerBall,
       status: snapshot.status,
@@ -101,6 +111,7 @@ class CashGameState {
   final List<int> balls;
   final List<CashGameRackResult> rackResults;
   final List<int> settledOffsets;
+  final List<int> settledRackWins;
   final int moneyPerRack;
   final int moneyPerBall;
   final CashGameStatus status;
@@ -109,6 +120,14 @@ class CashGameState {
 
   bool get canUndo => history.isNotEmpty;
   bool get currentRackHasScore => balls.any((v) => v > 0);
+  bool get currentRackWinsChanged {
+    if (rackWins.length != settledRackWins.length) return true;
+    for (var i = 0; i < rackWins.length; i++) {
+      if (rackWins[i] != settledRackWins[i]) return true;
+    }
+    return false;
+  }
+
   int get settledRackCount => rackResults.length;
   int get currentRackNumber => settledRackCount + 1;
   int get settlementAmount {
@@ -119,7 +138,8 @@ class CashGameState {
   }
 
   bool get canSettleBalance => settlementAmount > 0;
-  bool get canSettleRack => currentRackHasScore || canSettleBalance;
+  bool get canSettleRack =>
+      currentRackHasScore || currentRackWinsChanged || canSettleBalance;
 
   /// Tiền lỗ 10 đang nhập của ván hiện tại.
   int currentMoneyOf(int index) {
@@ -192,6 +212,7 @@ class CashGameState {
       balls: balls,
       rackResults: rackResults,
       settledOffsets: settledOffsets,
+      settledRackWins: settledRackWins,
       status: status,
     );
   }
@@ -202,6 +223,7 @@ class CashGameState {
     List<int>? balls,
     List<CashGameRackResult>? rackResults,
     List<int>? settledOffsets,
+    List<int>? settledRackWins,
     int? moneyPerRack,
     int? moneyPerBall,
     CashGameStatus? status,
@@ -214,6 +236,7 @@ class CashGameState {
       balls: balls ?? this.balls,
       rackResults: rackResults ?? this.rackResults,
       settledOffsets: settledOffsets ?? this.settledOffsets,
+      settledRackWins: settledRackWins ?? this.settledRackWins,
       moneyPerRack: moneyPerRack ?? this.moneyPerRack,
       moneyPerBall: moneyPerBall ?? this.moneyPerBall,
       status: status ?? this.status,

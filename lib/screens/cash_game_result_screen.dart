@@ -184,7 +184,7 @@ class _RackResultsCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Lỗ 10 đã chốt',
+              'Các ván đã chốt',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: AppColors.textDark,
                 fontWeight: FontWeight.w900,

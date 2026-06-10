@@ -18,6 +18,7 @@ void main() {
       expect(s.balls, [0, 0]);
       expect(s.rackResults, isEmpty);
       expect(s.settledOffsets, [0, 0]);
+      expect(s.settledRackWins, [0, 0]);
       expect(s.currentRackNumber, 1);
       expect(s.moneyPerRack, 40000);
       expect(s.moneyPerBall, 20000);
@@ -111,6 +112,7 @@ void main() {
       expect(s.grossMoneyOf(0), 120000);
       expect(s.grossMoneyOf(1), 140000);
       expect(s.settledOffsets, [120000, 120000]);
+      expect(s.settledRackWins, [1, 3]);
       expect(s.moneyOf(0), 0);
       expect(s.moneyOf(1), 20000);
       expect(s.totalRackWinsOf(0), 1);
@@ -153,7 +155,7 @@ void main() {
       expect(s.moneyDifference, 0);
     });
 
-    test('settleRack khi chưa có lỗ 10 vẫn trừ hiệu số nếu có', () {
+    test('settleRack khi chưa có lỗ 10 vẫn chốt ván nếu điểm số đổi', () {
       final s = fresh();
       final after = engine.settleRack(s);
       expect(after.rackResults, isEmpty);
@@ -164,10 +166,16 @@ void main() {
       withScore = engine.addRackWin(withScore, 1);
       withScore = engine.addRackWin(withScore, 1);
       final afterScore = engine.settleRack(withScore);
-      expect(afterScore.rackResults, isEmpty);
+      expect(afterScore.rackResults, hasLength(1));
       expect(afterScore.rackWins, [1, 3]);
+      expect(afterScore.settledRackWins, [1, 3]);
+      expect(afterScore.currentRackNumber, 2);
       expect(afterScore.moneyOf(0), 0);
       expect(afterScore.moneyOf(1), 80000);
+
+      final repeated = engine.settleRack(afterScore);
+      expect(repeated.rackResults, hasLength(1));
+      expect(repeated.canUndo, afterScore.canUndo);
     });
   });
 
@@ -201,12 +209,14 @@ void main() {
       expect(s.rackResults, hasLength(1));
       expect(s.rackWins, [0, 1]);
       expect(s.balls, [0, 0]);
+      expect(s.settledRackWins, [0, 1]);
       expect(s.moneyOf(1), 60000);
 
       s = engine.undo(s);
       expect(s.rackResults, isEmpty);
       expect(s.rackWins, [0, 1]);
       expect(s.balls, [0, 1]);
+      expect(s.settledRackWins, [0, 0]);
       expect(s.moneyOf(1), 60000);
     });
 
@@ -233,15 +243,16 @@ void main() {
       expect(s.moneyOf(1), 1);
     });
 
-    test('finishGame không tạo ván chốt nhưng vẫn trừ hiệu số điểm số', () {
+    test('finishGame tạo ván chốt không lỗ 10 khi điểm số đổi', () {
       var s = engine.startGame(['A', 'B'], moneyPerRack: 1, moneyPerBall: 1);
       s = engine.addRackWin(s, 0);
       s = engine.addRackWin(s, 1);
       s = engine.addRackWin(s, 1);
       s = engine.finishGame(s);
       expect(s.status, CashGameStatus.finished);
-      expect(s.rackResults, isEmpty);
+      expect(s.rackResults, hasLength(1));
       expect(s.rackWins, [1, 2]);
+      expect(s.settledRackWins, [1, 2]);
       expect(s.moneyOf(0), 0);
       expect(s.moneyOf(1), 1);
     });

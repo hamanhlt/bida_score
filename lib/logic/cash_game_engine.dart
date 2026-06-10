@@ -38,6 +38,7 @@ class CashGameEngine {
       balls: List.filled(names.length, 0),
       rackResults: const [],
       settledOffsets: List.filled(names.length, 0),
+      settledRackWins: List.filled(names.length, 0),
       moneyPerRack: moneyPerRack,
       moneyPerBall: moneyPerBall,
       status: CashGameStatus.inProgress,
@@ -121,7 +122,9 @@ class CashGameEngine {
     CashGameState state, {
     required bool pushHistory,
   }) {
-    var next = state.currentRackHasScore ? _settleCurrentRack(state) : state;
+    var next = state.currentRackHasScore || state.currentRackWinsChanged
+        ? _settleCurrentRack(state)
+        : state;
     final amount = next.settlementAmount;
     if (amount > 0) {
       next = next.copyWith(
@@ -132,6 +135,7 @@ class CashGameEngine {
         ],
       );
     }
+    next = next.copyWith(settledRackWins: next.rackWins);
     return pushHistory ? next.copyWith(history: _push(state)) : next;
   }
 
