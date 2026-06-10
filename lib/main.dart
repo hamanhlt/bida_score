@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'providers/active_leagues_controller.dart';
+import 'providers/cash_game_controller.dart';
 import 'providers/cover_image_controller.dart';
 import 'providers/game_controller.dart';
 import 'providers/league_session_controller.dart';
 import 'services/active_leagues_storage.dart';
 import 'services/ball_config_history_storage.dart';
+import 'services/cash_config_storage.dart';
 import 'services/cover_image_storage.dart';
 import 'services/game_persistence.dart';
 import 'services/league_session_storage.dart';
@@ -30,6 +32,7 @@ Future<void> main() async {
   final savedNames = await PlayerNameHistoryStorage.load();
   final savedCover = await CoverImageStorage.load();
   final savedBalls = await BallConfigHistoryStorage.load();
+  final savedCashConfig = await CashConfigStorage.load();
 
   runApp(
     ProviderScope(
@@ -41,6 +44,7 @@ Future<void> main() async {
         playerNameHistorySeedProvider.overrideWithValue(savedNames),
         coverImageSeedProvider.overrideWithValue(savedCover),
         ballConfigHistorySeedProvider.overrideWithValue(savedBalls),
+        cashConfigSeedProvider.overrideWithValue(savedCashConfig),
       ],
       child: const BidaScoreApp(),
     ),

@@ -1,7 +1,10 @@
-/// Chế độ chơi bi-a. 2 modes:
+/// Chế độ chơi bi-a:
 /// - [penalty369] (Bắn đền): cấu hình bi linh hoạt, ai ăn bi cộng điểm, chọn người trừ.
 /// - [pool]: race-to-X, biến thể (8/9/10-Ball / Khác) chọn ở Setup screen
 ///   và lưu vào `MatchResult.modeLabel`.
+/// - [cashGame] (Chơi điểm): 2 người, tính tiền theo ván thắng + số bi.
+///   Mức tiền/ván + tiền/lỗ 10 cấu hình ở Setup.
+/// - [league]: giải đấu nhiều thể thức.
 enum GameMode {
   penalty369(
     'Bắn đền',
@@ -13,6 +16,11 @@ enum GameMode {
     '2 người, race-to-X ván. Chọn biến thể 8/9/10-Ball / Khác ở Setup.',
     '🎱',
     iconBallNumber: 9,
+  ),
+  cashGame(
+    'Chơi điểm',
+    '2 người, tính tiền theo ván thắng + lỗ 10. Cấu hình mức tiền ở Setup.',
+    '💰',
   ),
   league(
     'Giải đấu',

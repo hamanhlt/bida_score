@@ -132,16 +132,20 @@ class MatchHistoryScreen extends ConsumerWidget {
   }
 
   /// Entry có thuộc tab [mode] không. penalty369 chỉ match label "Bắn đền".
-  /// pool match tất cả không phải Bắn đền — gồm "Pool" mới, các biến thể
-  /// "8/9/10-Ball" do user chọn ở Setup, và label legacy từ trận cũ.
+  /// cashGame match label "Chơi điểm". pool match phần còn lại không phải
+  /// Bắn đền / Chơi điểm — gồm "Pool" mới, biến thể "8/9/10-Ball" do user
+  /// chọn ở Setup, và label legacy từ trận cũ.
   bool _matchesMode(_HistoryEntry entry, GameMode mode) {
     if (entry.league != null) return mode == GameMode.league;
     final label = entry.match!.modeLabel;
     switch (mode) {
       case GameMode.penalty369:
         return label == GameMode.penalty369.label;
+      case GameMode.cashGame:
+        return label == GameMode.cashGame.label;
       case GameMode.pool:
-        return label != GameMode.penalty369.label;
+        return label != GameMode.penalty369.label &&
+            label != GameMode.cashGame.label;
       case GameMode.league:
         return false;
     }

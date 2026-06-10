@@ -1,7 +1,8 @@
 # Bida Score — Project Notes
 
-Flutter app ghi điểm bi-a (Vietnamese billiards). 3 modes: Bắn đền (penalty369),
-Pool (race-to-X, biến thể 8/9/10-Ball/tuỳ ý chọn ở Setup), và Giải đấu (league —
+Flutter app ghi điểm bi-a (Vietnamese billiards). 4 modes: Bắn đền (penalty369),
+Pool (race-to-X, biến thể 8/9/10-Ball/tuỳ ý chọn ở Setup), Chơi điểm (cashGame —
+2 người, tính tiền theo ván thắng + bi vào lỗ), và Giải đấu (league —
 3 thể thức: vòng tròn / vòng bảng manual + knockout / đấu nhánh kép).
 Target: Android (chính), iOS, Web (PWA via Docker).
 
@@ -9,7 +10,7 @@ Target: Android (chính), iOS, Web (PWA via Docker).
 
 ```
 flutter analyze        # phải sạch trước khi commit
-flutter test           # 108 tests (app_flow + engine + providers + widgets)
+flutter test           # 127 tests (app_flow + engine + providers + widgets)
 flutter run            # debug build (chọn device)
 flutter build web --release
 ```
@@ -44,6 +45,15 @@ lib/
   Setup có chip "Biến thể" (8/9/10-Ball/Khác) → lưu vào `NineBallState.variantLabel`
   → `MatchResult.modeLabel` khi kết thúc. Identifiers vẫn tên `NineBall*` vì
   Pool dùng race-to-X engine (đổi tên là refactor riêng nếu muốn).
+- `cashGame` (Chơi điểm) → CashGameSetupScreen / CashGameScreen /
+  CashGameResultScreen. 2 người, tính tiền: tap panel người = +1 ván
+  (+`moneyPerRack`), nút +/- "Bi vào lỗ" = +/- bi (+/- `moneyPerBall`).
+  `CashGameState.moneyOf(i)` = rackWins*rack + balls*ball. Setup cấu hình
+  mức tiền (default 40k/ván, 20k/bi) — lưu `cash_config_v1` để auto-fill.
+  Có undo (snapshot stack). Kết thúc thủ công → MatchResult{modeLabel:
+  'Chơi điểm', score = tiền mỗi người} vào match history. Result screen
+  hiện người thắng + chênh lệch (moneyDifference) phải trả. `formatVnd`
+  format "360.000". KHÔNG persist state đang chơi qua kill (giống Pool).
 - `league` → LeagueListScreen (landing) → LeagueSetupScreen /
   LeaguePlayScreen / LeagueResultScreen của 1 giải cụ thể. Hỗ trợ
   **nhiều giải song song**: mỗi giải có `id` riêng (sinh ở engine), lưu
@@ -156,6 +166,9 @@ Mỗi service 1 storage key với version suffix (vd `match_history_v1`):
   (gallery, maxWidth 1280, quality 80) → `coverImageProvider.set(bytes)`.
   Null → banner mặc định `assets/banner.jpg`. `Image.memory` vs `Image.asset`.
   iOS cần `NSPhotoLibraryUsageDescription` trong Info.plist.
+- `CashConfigStorage` (`cash_config_v1`) → mức tiền Chơi điểm gần nhất
+  ({moneyPerRack, moneyPerBall}) để Setup auto-fill. `CashGameController.
+  startGame` gọi `cashConfigProvider.set(...)`.
 - League trio:
   - `ActiveLeaguesStorage` (`active_leagues_v1`) → list giải đang chơi
     (status=inProgress). Per-entry try/catch — 1 entry hỏng không wipe
