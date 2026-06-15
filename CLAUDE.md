@@ -2,7 +2,7 @@
 
 Flutter app ghi điểm bi-a (Vietnamese billiards). 4 modes: Bắn đền (penalty369),
 Pool (race-to-X, biến thể 8/9/10-Ball/tuỳ ý chọn ở Setup), Chơi điểm (cashGame —
-2 người, tính tiền theo ván thắng + bi vào lỗ), và Giải đấu (league —
+2 người, tính tiền theo ván thắng + lỗ 10, chốt hiệu số), và Giải đấu (league —
 3 thể thức: vòng tròn / vòng bảng manual + knockout / đấu nhánh kép).
 Target: Android (chính), iOS, Web (PWA via Docker).
 
@@ -10,7 +10,7 @@ Target: Android (chính), iOS, Web (PWA via Docker).
 
 ```
 flutter analyze        # phải sạch trước khi commit
-flutter test           # 127 tests (app_flow + engine + providers + widgets)
+flutter test           # 132 tests (app_flow + engine + providers + widgets)
 flutter run            # debug build (chọn device)
 flutter build web --release
 ```
@@ -30,6 +30,7 @@ lib/
 ├── logic/              # Engine pure functions (không Riverpod, không I/O)
 │   ├── game_engine.dart       # Bắn đền
 │   ├── nine_ball_engine.dart  # race-to-X (Pool, dùng cho mọi biến thể)
+│   ├── cash_game_engine.dart  # Chơi điểm
 │   └── league_engine.dart     # Giải đấu (vòng tròn / bảng / double-elim)
 ├── providers/          # Riverpod NotifierProvider — wrap engine + ref disk
 ├── models/             # Plain data + JSON serialization
@@ -46,14 +47,23 @@ lib/
   → `MatchResult.modeLabel` khi kết thúc. Identifiers vẫn tên `NineBall*` vì
   Pool dùng race-to-X engine (đổi tên là refactor riêng nếu muốn).
 - `cashGame` (Chơi điểm) → CashGameSetupScreen / CashGameScreen /
-  CashGameResultScreen. 2 người, tính tiền: tap panel người = +1 ván
-  (+`moneyPerRack`), nút +/- "Bi vào lỗ" = +/- bi (+/- `moneyPerBall`).
-  `CashGameState.moneyOf(i)` = rackWins*rack + balls*ball. Setup cấu hình
-  mức tiền (default 40k/ván, 20k/bi) — lưu `cash_config_v1` để auto-fill.
-  Có undo (snapshot stack). Kết thúc thủ công → MatchResult{modeLabel:
-  'Chơi điểm', score = tiền mỗi người} vào match history. Result screen
-  hiện người thắng + chênh lệch (moneyDifference) phải trả. `formatVnd`
-  format "360.000". KHÔNG persist state đang chơi qua kill (giống Pool).
+  CashGameResultScreen. 2 người, tính tiền theo ván thắng + lỗ 10:
+  tap panel người = +1 ván thắng cộng dồn toàn trận (+`moneyPerRack`);
+  nút +/- "Lỗ 10" nhập lỗ 10 của ván hiện tại (+/- `moneyPerBall`).
+  Bấm "Chốt" khi có lỗ 10, khi ván thắng đổi so với lần chốt trước, hoặc
+  khi còn hiệu số để đối trừ. Chốt sẽ lưu 1 `CashGameRackResult` (kể cả
+  ván 0 lỗ 10 nếu điểm số đổi), reset `balls`, cập nhật `settledRackWins`,
+  rồi trừ phần tiền chung của 2 bên bằng `settledOffsets` để màn chơi chỉ
+  còn hiệu số (vd 120.000 vs 140.000 → 0 vs 20.000). `moneyOf(i)` trả tiền
+  sau đối trừ; `grossMoneyOf(i)` là tổng thô trước đối trừ. Setup cấu hình
+  mức tiền (default 40k/ván, 20k/lỗ 10) — lưu `cash_config_v1` để auto-fill.
+  Có undo (snapshot stack). Landscape dùng layout riêng cho dễ nhìn: panel
+  người chơi ngang lớn + cụm Lỗ 10/control bên cạnh. Kết thúc thủ công tự
+  chốt phần chưa chốt nếu cần → MatchResult{modeLabel: 'Chơi điểm', score =
+  tiền còn lại sau đối trừ} vào match history. Result screen hiện người thắng
+  + chênh lệch (moneyDifference) phải trả và "Các ván đã chốt". `formatVnd`
+  format "360.000"; lịch sử Chơi điểm cũng dùng format này thay vì số thô.
+  KHÔNG persist state đang chơi qua kill (giống Pool).
 - `league` → LeagueListScreen (landing) → LeagueSetupScreen /
   LeaguePlayScreen / LeagueResultScreen của 1 giải cụ thể. Hỗ trợ
   **nhiều giải song song**: mỗi giải có `id` riêng (sinh ở engine), lưu
@@ -66,6 +76,11 @@ lib/
      (single-elim + tranh 3-4). Engine xử lý seeding + knockout
      advancement; trận tranh 3-4 sinh tự động khi bán kết kết thúc
      (roundName `Tranh 3-4`, cùng roundIndex với chung kết).
+     Setup có 2 cách nhập: **Nhập tay** hoặc **Bốc thăm**. Bốc thăm cho
+     chọn số bảng + số người/bảng, nhập 1 hạt giống mỗi bảng và danh sách
+     còn lại; mỗi lần bấm "Quay lượt" rút 1 người cho từng bảng bằng các
+     vòng quay hình tròn. Khi quay đủ lượt, setup tạo `manualGroups` rồi
+     gọi engine như luồng nhập tay.
   3. **Đấu nhánh kép (double-elim hybrid)**: N ∈ {8, 16, 32}. Setup nhập
      thủ công từng cặp đấu lượt 1 (không random). Engine sinh trước TOÀN BỘ
      bracket (nhánh thắng + nhánh thua + GF) với placeholder slot — fill dần
@@ -96,6 +111,11 @@ lib/
      `fixture.score1 – fixture.score2` thô — tránh user đọc nhầm theo thứ
      tự p1/p2 fixture order (vd LB winner đánh bại WB winner trong GF: pill
      phải hiện "2 – 1" champion first, không phải "1 – 2" theo p1/p2).
+     Setup cũng có 2 cách nhập: **Nhập cặp** hoặc **Bốc thăm**. Bốc thăm
+     nhập 1 hạt giống cho mỗi cặp mở màn và danh sách đối thủ còn lại; bấm
+     "Quay đối thủ" để fill đối thủ cho từng cặp. Kết quả trả về list theo
+     thứ tự `[seed1, opponent1, seed2, opponent2, ...]` rồi gọi
+     `startDoubleElim`.
   Tap 1 fixture → bottom sheet nhập tỷ số → `LeagueController.updateScore` →
   engine recalculate leaderboard hoặc cascade bracket → listenSelf upsert
   vào active list.
@@ -153,22 +173,24 @@ Mỗi service 1 storage key với version suffix (vd `match_history_v1`):
   riêng — popup distinct values từ history pair (chọn số riêng / điểm riêng,
   không cụm). `LinkedHashSet.toList()` giữ thứ tự mới-nhất-trước.
 - `MatchHistoryController` → list trận đã kết thúc (Dismissible swipe-to-delete).
-  Cả Bắn đền lẫn Pool đều ghi vào đây (Pool ghi khi đạt race target trong
+  Bắn đền / Pool / Chơi điểm đều ghi vào đây. Pool ghi khi đạt race target trong
   `winRack` hoặc bấm "Kết thúc trận" — xem `NineBallController._recordHistoryIfFinished`,
-  `modeLabel` = biến thể đã chọn ở Setup).
+  `modeLabel` = biến thể đã chọn ở Setup. Chơi điểm ghi `score` là tiền còn
+  lại sau đối trừ và UI lịch sử format tiền bằng `formatVnd`.
   Tap trận → `MatchDetailScreen`: `MatchResult.events` (Bắn đền) → cây ván/lượt
   (`RoundHistoryView`); `MatchResult.rackWinners` (Pool) → play-by-play từng
   rack + tỉ số chạy (`_RackPlayByPlay`). 1 trong 2 list được điền, cái kia rỗng.
-  Tab Lịch sử filter: Bắn đền (`modeLabel == 'Bắn đền'`) vs Pool (mọi cái khác
-  — gồm cả legacy "8/9/10-Ball" cho backward-compat).
+  Tab Lịch sử filter: Bắn đền (`modeLabel == 'Bắn đền'`), Chơi điểm
+  (`modeLabel == 'Chơi điểm'`), Pool (mọi cái khác — gồm cả legacy
+  "8/9/10-Ball" cho backward-compat).
 - `CoverImageStorage` (`cover_image_v1`) → ảnh bìa tuỳ chỉnh (base64 bytes).
   User long-press banner ở Mode Selection → bottom sheet → `image_picker`
   (gallery, maxWidth 1280, quality 80) → `coverImageProvider.set(bytes)`.
   Null → banner mặc định `assets/banner.jpg`. `Image.memory` vs `Image.asset`.
   iOS cần `NSPhotoLibraryUsageDescription` trong Info.plist.
 - `CashConfigStorage` (`cash_config_v1`) → mức tiền Chơi điểm gần nhất
-  ({moneyPerRack, moneyPerBall}) để Setup auto-fill. `CashGameController.
-  startGame` gọi `cashConfigProvider.set(...)`.
+  ({moneyPerRack, moneyPerBall}, tức tiền/ván + tiền/lỗ 10) để Setup
+  auto-fill. `CashGameController.startGame` gọi `cashConfigProvider.set(...)`.
 - League trio:
   - `ActiveLeaguesStorage` (`active_leagues_v1`) → list giải đang chơi
     (status=inProgress). Per-entry try/catch — 1 entry hỏng không wipe
