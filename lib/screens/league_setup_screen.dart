@@ -44,6 +44,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
   List<List<String>> _groupDrawAssignments = [];
   int _groupDrawGroupCount = 4;
   int _groupDrawSize = 4;
+  int _groupDrawPlayerCount = 16;
   int _groupDrawSpinTick = 0;
 
   // Đấu nhánh kép: flat list theo cặp lượt 1, N phải là 8/16/32.
@@ -120,14 +121,46 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
   int get _groupTotalPlayers =>
       _groupControllers.fold<int>(0, (sum, g) => sum + g.length);
 
-  int get _groupDrawTotalPlayers => _groupDrawGroupCount * _groupDrawSize;
-  int get _groupDrawPoolCount => _groupDrawGroupCount * (_groupDrawSize - 1);
-  int get _groupDrawCompletedRounds => _groupDrawAssignments.isEmpty
-      ? 0
-      : _groupDrawAssignments.map((g) => g.length).reduce(min);
+  int get _groupDrawCapacity => _groupDrawGroupCount * _groupDrawSize;
+  int get _groupDrawMinPlayers => _groupDrawGroupCount * _minGroupSize;
+  int get _groupDrawMaxPlayers => min(_maxPlayers, _groupDrawCapacity);
+  int get _groupDrawTotalPlayers => _groupDrawPlayerCount;
+  int get _groupDrawPoolCount =>
+      max(0, _groupDrawPlayerCount - _groupDrawGroupCount);
+  List<int> get _groupDrawTargetSizes {
+    final baseSize = _groupDrawPlayerCount ~/ _groupDrawGroupCount;
+    final extra = _groupDrawPlayerCount % _groupDrawGroupCount;
+    return [
+      for (var i = 0; i < _groupDrawGroupCount; i++)
+        min(_groupDrawSize, baseSize + (i < extra ? 1 : 0)),
+    ];
+  }
+
+  int get _groupDrawCompletedRounds {
+    if (_groupDrawAssignments.length != _groupDrawGroupCount) return 0;
+    final targetSizes = _groupDrawTargetSizes;
+    final totalRounds = targetSizes.map((size) => size - 1).reduce(max);
+    var completed = 0;
+    for (var round = 0; round < totalRounds; round++) {
+      var roundDone = true;
+      for (var i = 0; i < _groupDrawGroupCount; i++) {
+        final targetDraws = targetSizes[i] - 1;
+        if (targetDraws > round && _groupDrawAssignments[i].length <= round) {
+          roundDone = false;
+          break;
+        }
+      }
+      if (!roundDone) break;
+      completed++;
+    }
+    return completed;
+  }
+
   bool get _groupDrawComplete =>
       _groupDrawAssignments.length == _groupDrawGroupCount &&
-      _groupDrawCompletedRounds >= _groupDrawSize - 1;
+      _groupDrawAssignments.asMap().entries.every(
+        (entry) => entry.value.length >= _groupDrawTargetSizes[entry.key] - 1,
+      );
 
   int get _dePairCount => _deControllers.length ~/ 2;
   bool get _deDrawComplete =>
@@ -150,6 +183,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
   }
 
   void _syncGroupDrawControllers() {
+    _normalizeGroupDrawPlayerCount();
     _resizeControllers(
       _groupSeedControllers,
       _groupDrawGroupCount,
@@ -160,7 +194,49 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       _groupDrawPoolCount,
       (i) => 'Người chơi ${_groupDrawGroupCount + i + 1}',
     );
+    _normalizeGeneratedPlayerNames(
+      _groupDrawPoolControllers,
+      startNumber: _groupDrawGroupCount + 1,
+      reservedControllers: _groupSeedControllers,
+    );
     _resetGroupDrawResult();
+  }
+
+  void _normalizeGroupDrawPlayerCount() {
+    final minPlayers = _groupDrawMinPlayers;
+    final maxPlayers = _groupDrawMaxPlayers;
+    _groupDrawPlayerCount = _groupDrawPlayerCount
+        .clamp(minPlayers, maxPlayers)
+        .toInt();
+  }
+
+  void _normalizeGeneratedPlayerNames(
+    List<TextEditingController> controllers, {
+    required int startNumber,
+    Iterable<TextEditingController> reservedControllers = const [],
+  }) {
+    final generatedName = RegExp(r'^Người chơi \d+$');
+    final used = <String>{
+      for (final c in reservedControllers)
+        if (c.text.trim().isNotEmpty) c.text.trim().toLowerCase(),
+      for (final c in controllers)
+        if (!generatedName.hasMatch(c.text.trim()) && c.text.trim().isNotEmpty)
+          c.text.trim().toLowerCase(),
+    };
+    var nextNumber = startNumber;
+    for (final c in controllers) {
+      final text = c.text.trim();
+      if (text.isNotEmpty && !generatedName.hasMatch(text)) continue;
+      var nextName = 'Người chơi $nextNumber';
+      while (used.contains(nextName.toLowerCase())) {
+        nextNumber++;
+        nextName = 'Người chơi $nextNumber';
+      }
+      c.text = nextName;
+      c.selection = TextSelection.collapsed(offset: nextName.length);
+      used.add(nextName.toLowerCase());
+      nextNumber++;
+    }
   }
 
   void _resetGroupDrawResult() {
@@ -352,7 +428,10 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
   }
 
   String? _validateGroupDrawInputs() {
-    if (_groupDrawTotalPlayers > _maxPlayers) {
+    if (_groupDrawTotalPlayers < _groupDrawMinPlayers) {
+      return 'Mỗi bảng cần ít nhất $_minGroupSize người.';
+    }
+    if (_groupDrawTotalPlayers > _groupDrawMaxPlayers) {
       return 'Bốc thăm vòng bảng hỗ trợ tối đa $_maxPlayers người.';
     }
     final names = [
@@ -379,18 +458,23 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     if (_groupDrawComplete) return;
 
     final assigned = _groupDrawAssignments.expand((g) => g).toSet();
+    final targetSizes = _groupDrawTargetSizes;
+    final nextGroupIndexes = [
+      for (var i = 0; i < _groupDrawGroupCount; i++)
+        if (_groupDrawAssignments[i].length < targetSizes[i] - 1) i,
+    ];
     final remaining = _groupDrawPoolControllers
         .map((c) => c.text.trim())
         .where((name) => !assigned.contains(name))
         .toList();
-    if (remaining.length < _groupDrawGroupCount) {
+    if (remaining.length < nextGroupIndexes.length) {
       setState(() => _errorText = 'Không đủ người để quay lượt tiếp theo.');
       return;
     }
     remaining.shuffle(_drawRng);
     setState(() {
-      for (var i = 0; i < _groupDrawGroupCount; i++) {
-        _groupDrawAssignments[i].add(remaining[i]);
+      for (var i = 0; i < nextGroupIndexes.length; i++) {
+        _groupDrawAssignments[nextGroupIndexes[i]].add(remaining[i]);
       }
       _groupDrawSpinTick++;
       _errorText = null;
@@ -417,9 +501,13 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
   }
 
   List<List<String>> _drawnGroups() {
+    final targetSizes = _groupDrawTargetSizes;
     return [
       for (var i = 0; i < _groupDrawGroupCount; i++)
-        [_groupSeedControllers[i].text.trim(), ..._groupDrawAssignments[i]],
+        [
+          _groupSeedControllers[i].text.trim(),
+          ..._groupDrawAssignments[i].take(targetSizes[i] - 1),
+        ],
     ];
   }
 
@@ -893,8 +981,17 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       for (final size in LeagueEngine.groupSizeOptions)
         if (size * _groupDrawGroupCount <= _maxPlayers) size,
     ];
+    final playerCountOptions = [
+      for (
+        var count = _groupDrawMinPlayers;
+        count <= _groupDrawMaxPlayers;
+        count++
+      )
+        count,
+    ];
+    final targetSizes = _groupDrawTargetSizes;
     final completedRounds = _groupDrawCompletedRounds;
-    final totalDrawRounds = _groupDrawSize - 1;
+    final totalDrawRounds = targetSizes.map((size) => size - 1).reduce(max);
     final canReset = _groupDrawAssignments.any((g) => g.isNotEmpty);
 
     return Column(
@@ -927,7 +1024,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
         ),
         const SizedBox(height: 10),
         _DrawConfigBlock(
-          title: 'Người mỗi bảng',
+          title: 'Tối đa mỗi bảng',
           children: [
             for (final size in sizeOptions)
               ChoiceChip(
@@ -944,6 +1041,44 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                     _errorText = null;
                   });
                 },
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _DrawConfigBlock(
+          title: 'Tổng số người',
+          children: [
+            for (final count in playerCountOptions)
+              ChoiceChip(
+                label: Text('$count người'),
+                selected: _groupDrawPlayerCount == count,
+                onSelected: (_) {
+                  setState(() {
+                    _groupDrawPlayerCount = count;
+                    _syncGroupDrawControllers();
+                    _errorText = null;
+                  });
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (var i = 0; i < targetSizes.length; i++)
+              Chip(
+                visualDensity: VisualDensity.compact,
+                label: Text(
+                  'Bảng ${_groupLetter(i)}: ${targetSizes[i]}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                backgroundColor: AppColors.primary.withAlpha(12),
+                side: const BorderSide(color: AppColors.border),
               ),
           ],
         ),
@@ -1016,7 +1151,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                 title: 'Bảng ${_groupLetter(i)}',
                 seed: _groupSeedControllers[i].text.trim(),
                 drawnNames: _groupDrawAssignments[i],
-                totalSlots: _groupDrawSize,
+                totalSlots: targetSizes[i],
                 spinTick: _groupDrawSpinTick,
                 index: i,
               ),
@@ -1342,7 +1477,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
         return 2 * n - 2;
       case _SetupMode.groupKnockout:
         final groupSizes = _groupInputMode == _GroupInputMode.draw
-            ? List<int>.filled(_groupDrawGroupCount, _groupDrawSize)
+            ? _groupDrawTargetSizes
             : [for (final g in _groupControllers) g.length];
         final groupMatches = groupSizes.fold<int>(
           0,

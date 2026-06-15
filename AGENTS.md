@@ -77,10 +77,11 @@ lib/
      advancement; trận tranh 3-4 sinh tự động khi bán kết kết thúc
      (roundName `Tranh 3-4`, cùng roundIndex với chung kết).
      Setup có 2 cách nhập: **Nhập tay** hoặc **Bốc thăm**. Bốc thăm cho
-     chọn số bảng + số người/bảng, nhập 1 hạt giống mỗi bảng và danh sách
-     còn lại; mỗi lần bấm "Quay lượt" rút 1 người cho từng bảng bằng các
-     vòng quay hình tròn. Khi quay đủ lượt, setup tạo `manualGroups` rồi
-     gọi engine như luồng nhập tay.
+     chọn số bảng + số người tối đa/bảng + tổng số người thực tế (cho phép
+     bảng thiếu người, miễn mỗi bảng tối thiểu 2 người), nhập 1 hạt giống
+     mỗi bảng và danh sách còn lại; mỗi lần bấm "Quay lượt" rút tối đa 1
+     người cho từng bảng còn slot bằng các vòng quay hình tròn. Khi quay đủ
+     lượt, setup tạo `manualGroups` rồi gọi engine như luồng nhập tay.
   3. **Đấu nhánh kép (double-elim hybrid)**: N ∈ {8, 16, 32}. Setup nhập
      thủ công từng cặp đấu lượt 1 (không random). Engine sinh trước TOÀN BỘ
      bracket (nhánh thắng + nhánh thua + GF) với placeholder slot — fill dần
