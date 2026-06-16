@@ -79,9 +79,13 @@ lib/
      Setup có 2 cách nhập: **Nhập tay** hoặc **Bốc thăm**. Bốc thăm cho
      chọn số bảng + số người tối đa/bảng + tổng số người thực tế (cho phép
      bảng thiếu người, miễn mỗi bảng tối thiểu 2 người), nhập 1 hạt giống
-     mỗi bảng và danh sách còn lại; mỗi lần bấm "Quay lượt" rút tối đa 1
-     người cho từng bảng còn slot bằng các vòng quay hình tròn. Khi quay đủ
-     lượt, setup tạo `manualGroups` rồi gọi engine như luồng nhập tay.
+     mỗi bảng và danh sách còn lại; bấm "Mở vòng quay" → popup fullscreen
+     [`DrawWheel`](lib/widgets/draw_wheel.dart): mỗi lần Quay xoay → dừng 1
+     người ngẫu nhiên → gán vào bảng cần thêm (ít người nhất, `_nextGroupToFill`),
+     người đó **biến mất** khỏi vòng (wheel co dần). Khi quay đủ, setup tạo
+     `manualGroups` rồi gọi engine như luồng nhập tay. Các
+     heading cấu hình/bốc thăm (`Số bảng`, `Tối đa mỗi bảng`, `Tổng số người`,
+     `Hạt giống`, `Danh sách bốc thăm`) dùng badge màu để nổi trên nền sáng.
   3. **Đấu nhánh kép (double-elim hybrid)**: N ∈ {8, 16, 32}. Setup nhập
      thủ công từng cặp đấu lượt 1 (không random). Engine sinh trước TOÀN BỘ
      bracket (nhánh thắng + nhánh thua + GF) với placeholder slot — fill dần
@@ -114,9 +118,12 @@ lib/
      phải hiện "2 – 1" champion first, không phải "1 – 2" theo p1/p2).
      Setup cũng có 2 cách nhập: **Nhập cặp** hoặc **Bốc thăm**. Bốc thăm
      nhập 1 hạt giống cho mỗi cặp mở màn và danh sách đối thủ còn lại; bấm
-     "Quay đối thủ" để fill đối thủ cho từng cặp. Kết quả trả về list theo
-     thứ tự `[seed1, opponent1, seed2, opponent2, ...]` rồi gọi
-     `startDoubleElim`.
+     "Mở vòng quay" → cùng popup `DrawWheel`, mỗi lần Quay bốc 1 đối thủ cho
+     cặp trống kế tiếp (người bốc xong biến mất khỏi vòng); heading trong
+     phần bốc thăm dùng badge màu giống Đấu bảng. Kết quả trả về list theo
+     thứ tự `[seed1, opponent1, seed2, opponent2, ...]` rồi gọi `startDoubleElim`.
+     Vòng quay (`DrawWheel`) chia múi pastel + emoji con vật random gán theo
+     tên (ổn định khi vòng co lại), nhãn counter-rotate luôn thẳng đứng.
   Tap 1 fixture → bottom sheet nhập tỷ số → `LeagueController.updateScore` →
   engine recalculate leaderboard hoặc cascade bracket → listenSelf upsert
   vào active list.

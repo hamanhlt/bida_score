@@ -7,6 +7,7 @@ import '../logic/league_engine.dart';
 import '../providers/game_controller.dart';
 import '../providers/league_controller.dart';
 import '../theme/app_colors.dart';
+import '../widgets/draw_wheel.dart';
 import '../widgets/name_history_button.dart';
 import '../widgets/table_background.dart';
 
@@ -45,14 +46,17 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
   int _groupDrawGroupCount = 4;
   int _groupDrawSize = 4;
   int _groupDrawPlayerCount = 16;
-  int _groupDrawSpinTick = 0;
+  // Vòng quay bốc thăm (popup): bảng + tên sẽ gán cho lần quay hiện tại.
+  int? _pendingGroupTarget;
+  String? _pendingGroupName;
 
   // Đấu nhánh kép: flat list theo cặp lượt 1, N phải là 8/16/32.
   final List<TextEditingController> _deControllers = [];
   final List<TextEditingController> _deSeedControllers = [];
   final List<TextEditingController> _deDrawPoolControllers = [];
   List<String?> _deDrawOpponents = [];
-  int _deDrawSpinTick = 0;
+  int? _pendingDePair;
+  String? _pendingDeName;
 
   String? _errorText;
   _SetupMode _mode = _SetupMode.roundRobin;
@@ -134,26 +138,6 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       for (var i = 0; i < _groupDrawGroupCount; i++)
         min(_groupDrawSize, baseSize + (i < extra ? 1 : 0)),
     ];
-  }
-
-  int get _groupDrawCompletedRounds {
-    if (_groupDrawAssignments.length != _groupDrawGroupCount) return 0;
-    final targetSizes = _groupDrawTargetSizes;
-    final totalRounds = targetSizes.map((size) => size - 1).reduce(max);
-    var completed = 0;
-    for (var round = 0; round < totalRounds; round++) {
-      var roundDone = true;
-      for (var i = 0; i < _groupDrawGroupCount; i++) {
-        final targetDraws = targetSizes[i] - 1;
-        if (targetDraws > round && _groupDrawAssignments[i].length <= round) {
-          roundDone = false;
-          break;
-        }
-      }
-      if (!roundDone) break;
-      completed++;
-    }
-    return completed;
   }
 
   bool get _groupDrawComplete =>
@@ -243,7 +227,8 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     _groupDrawAssignments = [
       for (var i = 0; i < _groupDrawGroupCount; i++) <String>[],
     ];
-    _groupDrawSpinTick = 0;
+    _pendingGroupTarget = null;
+    _pendingGroupName = null;
   }
 
   void _syncDeDrawControllers() {
@@ -262,7 +247,8 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
 
   void _resetDeDrawResult() {
     _deDrawOpponents = List<String?>.filled(_dePairCount, null);
-    _deDrawSpinTick = 0;
+    _pendingDePair = null;
+    _pendingDeName = null;
   }
 
   // ────────────────────────── round-robin actions ──────────────────────────
@@ -449,55 +435,138 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     return _validateUniqueNames(names);
   }
 
-  void _spinGroupDrawRound() {
+  /// Bảng kế tiếp cần bốc thêm người (ít người nhất, tie → index nhỏ).
+  int? _nextGroupToFill() {
+    final targets = _groupDrawTargetSizes;
+    int? best;
+    var bestDrawn = 1 << 30;
+    for (var i = 0; i < _groupDrawGroupCount; i++) {
+      final drawn = _groupDrawAssignments[i].length;
+      if (drawn >= targets[i] - 1) continue; // đã đủ (trừ hạt giống)
+      if (drawn < bestDrawn) {
+        best = i;
+        bestDrawn = drawn;
+      }
+    }
+    return best;
+  }
+
+  /// Người chờ bốc CHƯA được gán — wheel chỉ hiện những người này.
+  List<String> _groupRemainingPool() {
+    final assigned = _groupDrawAssignments.expand((g) => g).toSet();
+    return [
+      for (final c in _groupDrawPoolControllers)
+        if (!assigned.contains(c.text.trim())) c.text.trim(),
+    ];
+  }
+
+  /// Chọn ngẫu nhiên 1 vị trí trong [_groupRemainingPool] để wheel dừng,
+  /// ghi nhớ bảng + tên sẽ gán. Trả null nếu không còn gì để bốc.
+  int? _planGroupDraw() {
+    if (_groupDrawComplete) return null;
+    final group = _nextGroupToFill();
+    if (group == null) return null;
+    final remaining = _groupRemainingPool();
+    if (remaining.isEmpty) return null;
+    final pos = _drawRng.nextInt(remaining.length);
+    _pendingGroupTarget = group;
+    _pendingGroupName = remaining[pos];
+    return pos;
+  }
+
+  void _commitGroupDraw() {
+    final group = _pendingGroupTarget;
+    final name = _pendingGroupName;
+    if (group == null || name == null) return;
+    _groupDrawAssignments[group].add(name);
+    _pendingGroupTarget = null;
+    _pendingGroupName = null;
+  }
+
+  List<String> _deRemainingPool() {
+    final assigned = _deDrawOpponents
+        .whereType<String>()
+        .map((s) => s.trim())
+        .toSet();
+    return [
+      for (final c in _deDrawPoolControllers)
+        if (!assigned.contains(c.text.trim())) c.text.trim(),
+    ];
+  }
+
+  int? _planDeDraw() {
+    if (_deDrawComplete) return null;
+    final pair = _deDrawOpponents.indexWhere(
+      (o) => o == null || o.trim().isEmpty,
+    );
+    if (pair < 0) return null;
+    final remaining = _deRemainingPool();
+    if (remaining.isEmpty) return null;
+    final pos = _drawRng.nextInt(remaining.length);
+    _pendingDePair = pair;
+    _pendingDeName = remaining[pos];
+    return pos;
+  }
+
+  void _commitDeDraw() {
+    final pair = _pendingDePair;
+    final name = _pendingDeName;
+    if (pair == null || name == null) return;
+    _deDrawOpponents[pair] = name;
+    _pendingDePair = null;
+    _pendingDeName = null;
+  }
+
+  Future<void> _openGroupDrawWheel() async {
     final error = _validateGroupDrawInputs();
     if (error != null) {
       setState(() => _errorText = error);
       return;
     }
-    if (_groupDrawComplete) return;
-
-    final assigned = _groupDrawAssignments.expand((g) => g).toSet();
-    final targetSizes = _groupDrawTargetSizes;
-    final nextGroupIndexes = [
-      for (var i = 0; i < _groupDrawGroupCount; i++)
-        if (_groupDrawAssignments[i].length < targetSizes[i] - 1) i,
-    ];
-    final remaining = _groupDrawPoolControllers
-        .map((c) => c.text.trim())
-        .where((name) => !assigned.contains(name))
-        .toList();
-    if (remaining.length < nextGroupIndexes.length) {
-      setState(() => _errorText = 'Không đủ người để quay lượt tiếp theo.');
-      return;
-    }
-    remaining.shuffle(_drawRng);
-    setState(() {
-      for (var i = 0; i < nextGroupIndexes.length; i++) {
-        _groupDrawAssignments[nextGroupIndexes[i]].add(remaining[i]);
-      }
-      _groupDrawSpinTick++;
-      _errorText = null;
-    });
+    setState(() => _errorText = null);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _DrawWheelDialog(
+        title: 'Bốc thăm chia bảng',
+        remainingPool: _groupRemainingPool,
+        isComplete: () => _groupDrawComplete,
+        nextTargetLabel: () {
+          final g = _nextGroupToFill();
+          return g == null ? null : 'Bảng ${_groupLetter(g)}';
+        },
+        plan: _planGroupDraw,
+        commit: _commitGroupDraw,
+      ),
+    );
+    setState(() {}); // refresh result cards ngoài popup
   }
 
-  void _spinDeDraw() {
+  Future<void> _openDeDrawWheel() async {
     final error = _validateDeDrawInputs();
     if (error != null) {
       setState(() => _errorText = error);
       return;
     }
-    if (_deDrawComplete) return;
-
-    final pool = _deDrawPoolControllers.map((c) => c.text.trim()).toList()
-      ..shuffle(_drawRng);
-    setState(() {
-      for (var i = 0; i < _dePairCount; i++) {
-        _deDrawOpponents[i] = pool[i];
-      }
-      _deDrawSpinTick++;
-      _errorText = null;
-    });
+    setState(() => _errorText = null);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _DrawWheelDialog(
+        title: 'Bốc thăm đối thủ',
+        remainingPool: _deRemainingPool,
+        isComplete: () => _deDrawComplete,
+        nextTargetLabel: () {
+          final p = _deDrawOpponents.indexWhere(
+            (o) => o == null || o.trim().isEmpty,
+          );
+          return p < 0 ? null : 'Cặp ${p + 1}';
+        },
+        plan: _planDeDraw,
+        commit: _commitDeDraw,
+      ),
+    );
+    setState(() {});
   }
 
   List<List<String>> _drawnGroups() {
@@ -990,8 +1059,6 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
         count,
     ];
     final targetSizes = _groupDrawTargetSizes;
-    final completedRounds = _groupDrawCompletedRounds;
-    final totalDrawRounds = targetSizes.map((size) => size - 1).reduce(max);
     final canReset = _groupDrawAssignments.any((g) => g.isNotEmpty);
 
     return Column(
@@ -1132,45 +1199,27 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
             const SizedBox(height: 10),
         ],
         const SizedBox(height: 16),
+        _DrawLaunchRow(
+          complete: _groupDrawComplete,
+          canReset: canReset,
+          onOpen: _openGroupDrawWheel,
+          onReset: () {
+            setState(() {
+              _resetGroupDrawResult();
+              _errorText = null;
+            });
+          },
+        ),
+        const SizedBox(height: 14),
         _DrawWheelGrid(
           children: [
             for (var i = 0; i < _groupDrawGroupCount; i++)
-              _DrawWheelCard(
+              _DrawResultCard(
                 title: 'Bảng ${_groupLetter(i)}',
                 seed: _groupSeedControllers[i].text.trim(),
                 drawnNames: _groupDrawAssignments[i],
                 totalSlots: targetSizes[i],
-                spinTick: _groupDrawSpinTick,
-                index: i,
               ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            FilledButton.icon(
-              onPressed: _groupDrawComplete ? null : _spinGroupDrawRound,
-              icon: const Icon(Icons.casino_rounded),
-              label: Text(
-                _groupDrawComplete
-                    ? 'Đã quay đủ'
-                    : 'Quay lượt ${completedRounds + 1}/$totalDrawRounds',
-              ),
-            ),
-            OutlinedButton.icon(
-              onPressed: canReset
-                  ? () {
-                      setState(() {
-                        _resetGroupDrawResult();
-                        _errorText = null;
-                      });
-                    }
-                  : null,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Quay lại từ đầu'),
-            ),
           ],
         ),
       ],
@@ -1362,10 +1411,22 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
             const SizedBox(height: 10),
         ],
         const SizedBox(height: 16),
+        _DrawLaunchRow(
+          complete: _deDrawComplete,
+          canReset: canReset,
+          onOpen: _openDeDrawWheel,
+          onReset: () {
+            setState(() {
+              _resetDeDrawResult();
+              _errorText = null;
+            });
+          },
+        ),
+        const SizedBox(height: 14),
         _DrawWheelGrid(
           children: [
             for (var i = 0; i < _dePairCount; i++)
-              _DrawWheelCard(
+              _DrawResultCard(
                 title: 'Cặp ${i + 1}',
                 seed: _deSeedControllers[i].text.trim(),
                 drawnNames: [
@@ -1374,33 +1435,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
                     _deDrawOpponents[i]!,
                 ],
                 totalSlots: 2,
-                spinTick: _deDrawSpinTick,
-                index: i,
               ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            FilledButton.icon(
-              onPressed: _deDrawComplete ? null : _spinDeDraw,
-              icon: const Icon(Icons.casino_rounded),
-              label: Text(_deDrawComplete ? 'Đã quay xong' : 'Quay đối thủ'),
-            ),
-            OutlinedButton.icon(
-              onPressed: canReset
-                  ? () {
-                      setState(() {
-                        _resetDeDrawResult();
-                        _errorText = null;
-                      });
-                    }
-                  : null,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Quay lại từ đầu'),
-            ),
           ],
         ),
       ],
@@ -1619,26 +1654,253 @@ class _DrawWheelGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(spacing: 10, runSpacing: 10, children: children);
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      alignment: WrapAlignment.center,
+      children: children,
+    );
   }
 }
 
-class _DrawWheelCard extends StatelessWidget {
-  const _DrawWheelCard({
+/// Hàng nút mở vòng quay (popup) + reset. Hiện ở màn Setup; vòng quay
+/// thật nằm trong [_DrawWheelDialog] fullscreen.
+class _DrawLaunchRow extends StatelessWidget {
+  const _DrawLaunchRow({
+    required this.complete,
+    required this.canReset,
+    required this.onOpen,
+    required this.onReset,
+  });
+
+  final bool complete;
+  final bool canReset;
+  final VoidCallback onOpen;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: onOpen,
+            icon: const Icon(Icons.casino_rounded),
+            label: Text(complete ? 'Xem / quay lại vòng quay' : 'Mở vòng quay'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+        if (canReset) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: onReset,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Quay lại từ đầu'),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Popup fullscreen chứa vòng quay lớn. Mỗi lần bấm Quay → wheel xoay →
+/// dừng 1 người → [commit] gán vào slot, người đó biến mất khỏi vòng.
+/// Dialog tự rebuild qua setState; data thật nằm ở State cha (mutate trực
+/// tiếp qua [plan]/[commit]).
+class _DrawWheelDialog extends StatefulWidget {
+  const _DrawWheelDialog({
+    required this.title,
+    required this.remainingPool,
+    required this.isComplete,
+    required this.nextTargetLabel,
+    required this.plan,
+    required this.commit,
+  });
+
+  final String title;
+  final List<String> Function() remainingPool;
+  final bool Function() isComplete;
+  final String? Function() nextTargetLabel;
+
+  /// Trả về vị trí (trong remainingPool hiện tại) wheel sẽ dừng, hoặc null.
+  final int? Function() plan;
+  final VoidCallback commit;
+
+  @override
+  State<_DrawWheelDialog> createState() => _DrawWheelDialogState();
+}
+
+class _DrawWheelDialogState extends State<_DrawWheelDialog> {
+  int _nonce = 0;
+  int _target = 0;
+  bool _spinning = false;
+  String? _lastPicked;
+
+  void _spin() {
+    if (_spinning) return;
+    final pos = widget.plan();
+    if (pos == null) return;
+    setState(() {
+      _target = pos;
+      _nonce++;
+      _spinning = true;
+    });
+  }
+
+  void _onEnd() {
+    final names = widget.remainingPool();
+    final picked = (_target >= 0 && _target < names.length)
+        ? names[_target]
+        : null;
+    widget.commit();
+    setState(() {
+      _spinning = false;
+      _lastPicked = picked;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final names = widget.remainingPool();
+    final complete = widget.isComplete();
+    final nextLabel = widget.nextTargetLabel();
+    final media = MediaQuery.sizeOf(context);
+    final wheelSize = (min(media.width, media.height) - 48).clamp(220.0, 460.0);
+
+    return Dialog.fullscreen(
+      backgroundColor: AppColors.scaffoldBg,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(
+                        color: AppColors.textDark,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 20,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                    tooltip: 'Đóng',
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DrawWheel(
+                        names: names,
+                        spinNonce: _nonce,
+                        targetIndex: _target,
+                        onSpinEnd: _onEnd,
+                        size: wheelSize,
+                      ),
+                      const SizedBox(height: 12),
+                      if (complete)
+                        const Text(
+                          '✓ Đã bốc đủ',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 18,
+                          ),
+                        )
+                      else if (_spinning && nextLabel != null)
+                        Text(
+                          'Đang quay cho $nextLabel…',
+                          style: const TextStyle(
+                            color: AppColors.primaryDark,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        )
+                      else if (_lastPicked != null)
+                        Text(
+                          '🎯 $_lastPicked',
+                          style: const TextStyle(
+                            color: AppColors.textDark,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 18,
+                          ),
+                        )
+                      else if (nextLabel != null)
+                        Text(
+                          'Tiếp theo: $nextLabel',
+                          style: const TextStyle(
+                            color: AppColors.textSubtle,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: (_spinning || complete) ? null : _spin,
+                  icon: const Icon(Icons.casino_rounded),
+                  label: Text(
+                    complete
+                        ? 'Đã bốc đủ — Đóng'
+                        : _spinning
+                        ? 'Đang quay…'
+                        : 'QUAY',
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: AppColors.textDark,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Card kết quả 1 bảng/cặp sau khi quay — title + đếm + danh sách tên
+/// (hạt giống đứng đầu). Không còn vòng tròn xoay (đã có DrawWheel lớn).
+class _DrawResultCard extends StatelessWidget {
+  const _DrawResultCard({
     required this.title,
     required this.seed,
     required this.drawnNames,
     required this.totalSlots,
-    required this.spinTick,
-    required this.index,
   });
 
   final String title;
   final String seed;
   final List<String> drawnNames;
   final int totalSlots;
-  final int spinTick;
-  final int index;
 
   @override
   Widget build(BuildContext context) {
@@ -1646,11 +1908,6 @@ class _DrawWheelCard extends StatelessWidget {
       if (seed.trim().isNotEmpty) seed.trim(),
       ...drawnNames.where((n) => n.trim().isNotEmpty),
     ];
-    final currentName = drawnNames.isNotEmpty
-        ? drawnNames.last
-        : seed.trim().isEmpty
-        ? 'Chờ quay'
-        : seed.trim();
 
     return SizedBox(
       width: 154,
@@ -1662,50 +1919,8 @@ class _DrawWheelCard extends StatelessWidget {
           border: Border.all(color: AppColors.border),
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            AnimatedRotation(
-              turns: spinTick.toDouble() + index * 0.03,
-              duration: const Duration(milliseconds: 720),
-              curve: Curves.easeOutBack,
-              child: Container(
-                width: 92,
-                height: 92,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: SweepGradient(
-                    colors: [
-                      AppColors.accent,
-                      AppColors.primary.withAlpha(210),
-                      const Color(0xFF7AA3C8),
-                      AppColors.accent,
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(18),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Container(
-                    width: 58,
-                    height: 58,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.casino_rounded,
-                      color: AppColors.primaryDark,
-                      size: 28,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
             Text(
               title,
               style: const TextStyle(
@@ -1722,26 +1937,6 @@ class _DrawWheelCard extends StatelessWidget {
                 color: AppColors.textSubtle,
                 fontWeight: FontWeight.w700,
                 fontSize: 11,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withAlpha(10),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                currentName,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.primaryDark,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12,
-                ),
               ),
             ),
             const SizedBox(height: 8),
