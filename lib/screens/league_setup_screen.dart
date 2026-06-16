@@ -1083,13 +1083,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
           ],
         ),
         const SizedBox(height: 14),
-        Text(
-          'Hạt giống',
-          style: theme.textTheme.titleSmall?.copyWith(
-            color: AppColors.textDark,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
+        const _SectionBadgeTitle('Hạt giống'),
         const SizedBox(height: 10),
         for (var i = 0; i < _groupSeedControllers.length; i++) ...[
           _PlayerNameRow(
@@ -1112,13 +1106,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
           if (i != _groupSeedControllers.length - 1) const SizedBox(height: 10),
         ],
         const SizedBox(height: 14),
-        Text(
-          'Danh sách bốc thăm',
-          style: theme.textTheme.titleSmall?.copyWith(
-            color: AppColors.textDark,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
+        const _SectionBadgeTitle('Danh sách bốc thăm'),
         const SizedBox(height: 10),
         for (var i = 0; i < _groupDrawPoolControllers.length; i++) ...[
           _PlayerNameRow(
@@ -1325,13 +1313,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        Text(
-          'Hạt giống',
-          style: theme.textTheme.titleSmall?.copyWith(
-            color: AppColors.textDark,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
+        const _SectionBadgeTitle('Hạt giống'),
         const SizedBox(height: 10),
         for (var i = 0; i < _deSeedControllers.length; i++) ...[
           _PlayerNameRow(
@@ -1354,13 +1336,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
           if (i != _deSeedControllers.length - 1) const SizedBox(height: 10),
         ],
         const SizedBox(height: 14),
-        Text(
-          'Danh sách bốc thăm',
-          style: theme.textTheme.titleSmall?.copyWith(
-            color: AppColors.textDark,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
+        const _SectionBadgeTitle('Danh sách bốc thăm'),
         const SizedBox(height: 10),
         for (var i = 0; i < _deDrawPoolControllers.length; i++) ...[
           _PlayerNameRow(
@@ -1600,16 +1576,38 @@ class _DrawConfigBlock extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: AppColors.textSubtle,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
+        _SectionBadgeTitle(title),
         const SizedBox(height: 8),
         Wrap(spacing: 8, runSpacing: 8, children: children),
       ],
+    );
+  }
+}
+
+class _SectionBadgeTitle extends StatelessWidget {
+  const _SectionBadgeTitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.accent.withAlpha(145),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.primary.withAlpha(70)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        child: Text(
+          text,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: AppColors.textDark,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
     );
   }
 }
