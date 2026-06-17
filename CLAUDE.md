@@ -79,12 +79,13 @@ lib/
      Setup có 2 cách nhập: **Nhập tay** hoặc **Bốc thăm**. Bốc thăm cho
      chọn số bảng + số người tối đa/bảng + tổng số người thực tế (cho phép
      bảng thiếu người, miễn mỗi bảng tối thiểu 2 người), nhập 1 hạt giống
-     mỗi bảng và danh sách còn lại; bấm "Mở vòng quay" → popup fullscreen
-     `_DrawWheelDialog` chứa **nhiều** [`DrawWheel`](lib/widgets/draw_wheel.dart)
-     (1 wheel/bảng, lưới 2 cột). Mỗi lần Quay: **mọi bảng còn slot quay ĐỒNG
-     THỜI** (`_planGroupRound` chọn distinct mỗi bảng 1 người từ pool còn lại),
-     xong cả lượt → `_commitGroupRound` gán hết, người đã bốc **biến mất** khỏi
-     mọi vòng (wheel co dần); bảng đủ người hiện badge ✓. Khi quay đủ, setup tạo
+     mỗi bảng và danh sách còn lại; bốc thăm INLINE bằng lưới
+     `_InlineDrawWheelCard` (1 [`DrawWheel`](lib/widgets/draw_wheel.dart)/bảng).
+     Bấm "Quay lượt X/Y": **mọi bảng còn slot quay ĐỒNG THỜI** thêm 1 người
+     (`_spinGroupRound` → `_planGroupRound` chọn distinct mỗi bảng 1 người;
+     đếm `_groupSpinFinished == _groupSpinExpected` rồi `_commitGroupRound`),
+     người đã bốc **biến mất** khỏi mọi vòng (wheel co dần); bảng đủ người
+     hiện badge ✓. Lượt 2 quay tiếp thêm 1 người/bảng... Khi quay đủ, setup tạo
      `manualGroups` rồi gọi engine như luồng nhập tay. Các
      heading cấu hình/bốc thăm (`Số bảng`, `Tối đa mỗi bảng`, `Tổng số người`,
      `Hạt giống`, `Danh sách bốc thăm`) dùng badge màu để nổi trên nền sáng.
@@ -120,10 +121,11 @@ lib/
      phải hiện "2 – 1" champion first, không phải "1 – 2" theo p1/p2).
      Setup cũng có 2 cách nhập: **Nhập cặp** hoặc **Bốc thăm**. Bốc thăm
      nhập 1 hạt giống cho mỗi cặp mở màn và danh sách đối thủ còn lại; bấm
-     "Mở vòng quay" → cùng popup `_DrawWheelDialog` (1 wheel/cặp), mỗi lần Quay
-     mọi cặp trống bốc đối thủ ĐỒNG THỜI (`_planDeRound`/`_commitDeRound`),
-     người bốc xong biến mất khỏi mọi vòng; heading trong phần bốc thăm dùng
-     badge màu giống Đấu bảng. Kết quả trả về list theo thứ tự
+     bốc thăm INLINE cùng lưới `_InlineDrawWheelCard` (1 wheel/cặp); bấm
+     "Quay bốc đối thủ" → mọi cặp trống bốc ĐỒNG THỜI 1 lượt
+     (`_spinDeRound`/`_planDeRound`/`_commitDeRound`), người bốc xong biến
+     mất khỏi mọi vòng; heading trong phần bốc thăm dùng badge màu giống Đấu
+     bảng. Kết quả trả về list theo thứ tự
      `[seed1, opponent1, seed2, opponent2, ...]` rồi gọi `startDoubleElim`.
      Vòng quay (`DrawWheel`) chia múi pastel + emoji con vật random gán theo
      tên (ổn định khi vòng co lại), nhãn counter-rotate luôn thẳng đứng.
