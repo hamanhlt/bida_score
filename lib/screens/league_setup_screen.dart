@@ -46,17 +46,16 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
   int _groupDrawGroupCount = 4;
   int _groupDrawSize = 4;
   int _groupDrawPlayerCount = 16;
-  // Vòng quay bốc thăm (popup): bảng + tên sẽ gán cho lần quay hiện tại.
-  int? _pendingGroupTarget;
-  String? _pendingGroupName;
+  // Vòng quay bốc thăm (popup): picks của lượt quay hiện tại — mỗi bảng
+  // (key = group index) bốc 1 người (value = tên), gán đồng thời khi xong.
+  Map<int, String> _pendingGroupPicks = {};
 
   // Đấu nhánh kép: flat list theo cặp lượt 1, N phải là 8/16/32.
   final List<TextEditingController> _deControllers = [];
   final List<TextEditingController> _deSeedControllers = [];
   final List<TextEditingController> _deDrawPoolControllers = [];
   List<String?> _deDrawOpponents = [];
-  int? _pendingDePair;
-  String? _pendingDeName;
+  Map<int, String> _pendingDePicks = {};
 
   String? _errorText;
   _SetupMode _mode = _SetupMode.roundRobin;
@@ -227,8 +226,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     _groupDrawAssignments = [
       for (var i = 0; i < _groupDrawGroupCount; i++) <String>[],
     ];
-    _pendingGroupTarget = null;
-    _pendingGroupName = null;
+    _pendingGroupPicks = {};
   }
 
   void _syncDeDrawControllers() {
@@ -247,8 +245,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
 
   void _resetDeDrawResult() {
     _deDrawOpponents = List<String?>.filled(_dePairCount, null);
-    _pendingDePair = null;
-    _pendingDeName = null;
+    _pendingDePicks = {};
   }
 
   // ────────────────────────── round-robin actions ──────────────────────────
@@ -435,22 +432,6 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     return _validateUniqueNames(names);
   }
 
-  /// Bảng kế tiếp cần bốc thêm người (ít người nhất, tie → index nhỏ).
-  int? _nextGroupToFill() {
-    final targets = _groupDrawTargetSizes;
-    int? best;
-    var bestDrawn = 1 << 30;
-    for (var i = 0; i < _groupDrawGroupCount; i++) {
-      final drawn = _groupDrawAssignments[i].length;
-      if (drawn >= targets[i] - 1) continue; // đã đủ (trừ hạt giống)
-      if (drawn < bestDrawn) {
-        best = i;
-        bestDrawn = drawn;
-      }
-    }
-    return best;
-  }
-
   /// Người chờ bốc CHƯA được gán — wheel chỉ hiện những người này.
   List<String> _groupRemainingPool() {
     final assigned = _groupDrawAssignments.expand((g) => g).toSet();
@@ -460,27 +441,34 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     ];
   }
 
-  /// Chọn ngẫu nhiên 1 vị trí trong [_groupRemainingPool] để wheel dừng,
-  /// ghi nhớ bảng + tên sẽ gán. Trả null nếu không còn gì để bốc.
-  int? _planGroupDraw() {
+  bool _groupNeedsMore(int groupIndex) =>
+      _groupDrawAssignments[groupIndex].length <
+      _groupDrawTargetSizes[groupIndex] - 1;
+
+  /// Lên kế hoạch 1 LƯỢT quay: mỗi bảng còn slot bốc 1 người (đồng thời).
+  /// Trả map {groupIndex → vị trí trong remainingPool}, null nếu xong.
+  Map<int, int>? _planGroupRound() {
     if (_groupDrawComplete) return null;
-    final group = _nextGroupToFill();
-    if (group == null) return null;
     final remaining = _groupRemainingPool();
     if (remaining.isEmpty) return null;
-    final pos = _drawRng.nextInt(remaining.length);
-    _pendingGroupTarget = group;
-    _pendingGroupName = remaining[pos];
-    return pos;
+    final positions = List<int>.generate(remaining.length, (i) => i)
+      ..shuffle(_drawRng);
+    final picks = <int, int>{};
+    _pendingGroupPicks = {};
+    var p = 0;
+    for (var g = 0; g < _groupDrawGroupCount; g++) {
+      if (!_groupNeedsMore(g)) continue;
+      if (p >= positions.length) break;
+      final pos = positions[p++];
+      picks[g] = pos;
+      _pendingGroupPicks[g] = remaining[pos];
+    }
+    return picks.isEmpty ? null : picks;
   }
 
-  void _commitGroupDraw() {
-    final group = _pendingGroupTarget;
-    final name = _pendingGroupName;
-    if (group == null || name == null) return;
-    _groupDrawAssignments[group].add(name);
-    _pendingGroupTarget = null;
-    _pendingGroupName = null;
+  void _commitGroupRound() {
+    _pendingGroupPicks.forEach((g, name) => _groupDrawAssignments[g].add(name));
+    _pendingGroupPicks = {};
   }
 
   List<String> _deRemainingPool() {
@@ -494,27 +482,33 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
     ];
   }
 
-  int? _planDeDraw() {
-    if (_deDrawComplete) return null;
-    final pair = _deDrawOpponents.indexWhere(
-      (o) => o == null || o.trim().isEmpty,
-    );
-    if (pair < 0) return null;
-    final remaining = _deRemainingPool();
-    if (remaining.isEmpty) return null;
-    final pos = _drawRng.nextInt(remaining.length);
-    _pendingDePair = pair;
-    _pendingDeName = remaining[pos];
-    return pos;
+  bool _dePairNeedsMore(int pairIndex) {
+    final o = _deDrawOpponents[pairIndex];
+    return o == null || o.trim().isEmpty;
   }
 
-  void _commitDeDraw() {
-    final pair = _pendingDePair;
-    final name = _pendingDeName;
-    if (pair == null || name == null) return;
-    _deDrawOpponents[pair] = name;
-    _pendingDePair = null;
-    _pendingDeName = null;
+  Map<int, int>? _planDeRound() {
+    if (_deDrawComplete) return null;
+    final remaining = _deRemainingPool();
+    if (remaining.isEmpty) return null;
+    final positions = List<int>.generate(remaining.length, (i) => i)
+      ..shuffle(_drawRng);
+    final picks = <int, int>{};
+    _pendingDePicks = {};
+    var p = 0;
+    for (var i = 0; i < _dePairCount; i++) {
+      if (!_dePairNeedsMore(i)) continue;
+      if (p >= positions.length) break;
+      final pos = positions[p++];
+      picks[i] = pos;
+      _pendingDePicks[i] = remaining[pos];
+    }
+    return picks.isEmpty ? null : picks;
+  }
+
+  void _commitDeRound() {
+    _pendingDePicks.forEach((i, name) => _deDrawOpponents[i] = name);
+    _pendingDePicks = {};
   }
 
   Future<void> _openGroupDrawWheel() async {
@@ -529,14 +523,15 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       barrierDismissible: false,
       builder: (_) => _DrawWheelDialog(
         title: 'Bốc thăm chia bảng',
+        wheelLabels: [
+          for (var i = 0; i < _groupDrawGroupCount; i++)
+            'Bảng ${_groupLetter(i)}',
+        ],
         remainingPool: _groupRemainingPool,
         isComplete: () => _groupDrawComplete,
-        nextTargetLabel: () {
-          final g = _nextGroupToFill();
-          return g == null ? null : 'Bảng ${_groupLetter(g)}';
-        },
-        plan: _planGroupDraw,
-        commit: _commitGroupDraw,
+        wheelNeedsMore: _groupNeedsMore,
+        planRound: _planGroupRound,
+        commitRound: _commitGroupRound,
       ),
     );
     setState(() {}); // refresh result cards ngoài popup
@@ -554,16 +549,12 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       barrierDismissible: false,
       builder: (_) => _DrawWheelDialog(
         title: 'Bốc thăm đối thủ',
+        wheelLabels: [for (var i = 0; i < _dePairCount; i++) 'Cặp ${i + 1}'],
         remainingPool: _deRemainingPool,
         isComplete: () => _deDrawComplete,
-        nextTargetLabel: () {
-          final p = _deDrawOpponents.indexWhere(
-            (o) => o == null || o.trim().isEmpty,
-          );
-          return p < 0 ? null : 'Cặp ${p + 1}';
-        },
-        plan: _planDeDraw,
-        commit: _commitDeDraw,
+        wheelNeedsMore: _dePairNeedsMore,
+        planRound: _planDeRound,
+        commitRound: _commitDeRound,
       ),
     );
     setState(() {});
@@ -1708,59 +1699,70 @@ class _DrawLaunchRow extends StatelessWidget {
   }
 }
 
-/// Popup fullscreen chứa vòng quay lớn. Mỗi lần bấm Quay → wheel xoay →
-/// dừng 1 người → [commit] gán vào slot, người đó biến mất khỏi vòng.
-/// Dialog tự rebuild qua setState; data thật nằm ở State cha (mutate trực
-/// tiếp qua [plan]/[commit]).
+/// Popup fullscreen chứa NHIỀU vòng quay — 1 wheel/bảng (hoặc /cặp). Mỗi
+/// lần bấm QUAY, mọi bảng còn slot quay ĐỒNG THỜI, mỗi cái dừng 1 người
+/// khác nhau; xong cả lượt thì [commitRound] gán hết, người đã bốc biến
+/// mất khỏi mọi vòng. Bảng đã đủ hiện badge ✓.
 class _DrawWheelDialog extends StatefulWidget {
   const _DrawWheelDialog({
     required this.title,
+    required this.wheelLabels,
     required this.remainingPool,
     required this.isComplete,
-    required this.nextTargetLabel,
-    required this.plan,
-    required this.commit,
+    required this.wheelNeedsMore,
+    required this.planRound,
+    required this.commitRound,
   });
 
   final String title;
+  final List<String> wheelLabels;
   final List<String> Function() remainingPool;
   final bool Function() isComplete;
-  final String? Function() nextTargetLabel;
+  final bool Function(int wheelIndex) wheelNeedsMore;
 
-  /// Trả về vị trí (trong remainingPool hiện tại) wheel sẽ dừng, hoặc null.
-  final int? Function() plan;
-  final VoidCallback commit;
+  /// Trả {wheelIndex → vị trí trong remainingPool} cho lượt quay, null nếu xong.
+  final Map<int, int>? Function() planRound;
+  final VoidCallback commitRound;
 
   @override
   State<_DrawWheelDialog> createState() => _DrawWheelDialogState();
 }
 
 class _DrawWheelDialogState extends State<_DrawWheelDialog> {
-  int _nonce = 0;
-  int _target = 0;
+  late final List<int> _wheelNonce;
+  Map<int, int> _targets = {};
   bool _spinning = false;
-  String? _lastPicked;
+  int _finished = 0;
+  int _expected = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _wheelNonce = List<int>.filled(widget.wheelLabels.length, 0);
+  }
 
   void _spin() {
     if (_spinning) return;
-    final pos = widget.plan();
-    if (pos == null) return;
+    final picks = widget.planRound();
+    if (picks == null || picks.isEmpty) return;
     setState(() {
-      _target = pos;
-      _nonce++;
+      _targets = picks;
+      _finished = 0;
+      _expected = picks.length;
       _spinning = true;
+      for (final w in picks.keys) {
+        _wheelNonce[w]++;
+      }
     });
   }
 
-  void _onEnd() {
-    final names = widget.remainingPool();
-    final picked = (_target >= 0 && _target < names.length)
-        ? names[_target]
-        : null;
-    widget.commit();
+  void _onWheelDone() {
+    _finished++;
+    if (_finished < _expected) return;
+    widget.commitRound();
     setState(() {
       _spinning = false;
-      _lastPicked = picked;
+      _targets = {};
     });
   }
 
@@ -1768,9 +1770,14 @@ class _DrawWheelDialogState extends State<_DrawWheelDialog> {
   Widget build(BuildContext context) {
     final names = widget.remainingPool();
     final complete = widget.isComplete();
-    final nextLabel = widget.nextTargetLabel();
     final media = MediaQuery.sizeOf(context);
-    final wheelSize = (min(media.width, media.height) - 48).clamp(220.0, 460.0);
+    final count = widget.wheelLabels.length;
+    final columns = count <= 1 ? 1 : 2;
+    final maxW = min(media.width, 560.0);
+    final wheelSize = ((maxW - 16 * (columns + 1)) / columns).clamp(
+      130.0,
+      300.0,
+    );
 
     return Dialog.fullscreen(
       backgroundColor: AppColors.scaffoldBg,
@@ -1800,53 +1807,40 @@ class _DrawWheelDialogState extends State<_DrawWheelDialog> {
               ),
             ),
             Expanded(
-              child: Center(
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Center(
+                  child: Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    alignment: WrapAlignment.center,
                     children: [
-                      DrawWheel(
-                        names: names,
-                        spinNonce: _nonce,
-                        targetIndex: _target,
-                        onSpinEnd: _onEnd,
-                        size: wheelSize,
-                      ),
-                      const SizedBox(height: 12),
-                      if (complete)
-                        const Text(
-                          '✓ Đã bốc đủ',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18,
-                          ),
-                        )
-                      else if (_spinning && nextLabel != null)
-                        Text(
-                          'Đang quay cho $nextLabel…',
-                          style: const TextStyle(
-                            color: AppColors.primaryDark,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                          ),
-                        )
-                      else if (_lastPicked != null)
-                        Text(
-                          '🎯 $_lastPicked',
-                          style: const TextStyle(
-                            color: AppColors.textDark,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18,
-                          ),
-                        )
-                      else if (nextLabel != null)
-                        Text(
-                          'Tiếp theo: $nextLabel',
-                          style: const TextStyle(
-                            color: AppColors.textSubtle,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
+                      for (var w = 0; w < count; w++)
+                        SizedBox(
+                          width: wheelSize,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                widget.wheelLabels[w],
+                                style: const TextStyle(
+                                  color: AppColors.textDark,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              if (widget.wheelNeedsMore(w))
+                                DrawWheel(
+                                  names: names,
+                                  spinNonce: _wheelNonce[w],
+                                  targetIndex: _targets[w] ?? 0,
+                                  onSpinEnd: _onWheelDone,
+                                  size: wheelSize,
+                                )
+                              else
+                                _WheelDoneBadge(size: wheelSize),
+                            ],
                           ),
                         ),
                     ],
@@ -1878,6 +1872,43 @@ class _DrawWheelDialogState extends State<_DrawWheelDialog> {
                     ),
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Ô thay cho wheel khi bảng/cặp đã bốc đủ.
+class _WheelDoneBadge extends StatelessWidget {
+  const _WheelDoneBadge({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.primary.withAlpha(18),
+        border: Border.all(color: AppColors.primary.withAlpha(80), width: 2),
+      ),
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 40),
+            SizedBox(height: 6),
+            Text(
+              'Đủ',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
               ),
             ),
           ],

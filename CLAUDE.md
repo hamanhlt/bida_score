@@ -80,9 +80,11 @@ lib/
      chọn số bảng + số người tối đa/bảng + tổng số người thực tế (cho phép
      bảng thiếu người, miễn mỗi bảng tối thiểu 2 người), nhập 1 hạt giống
      mỗi bảng và danh sách còn lại; bấm "Mở vòng quay" → popup fullscreen
-     [`DrawWheel`](lib/widgets/draw_wheel.dart): mỗi lần Quay xoay → dừng 1
-     người ngẫu nhiên → gán vào bảng cần thêm (ít người nhất, `_nextGroupToFill`),
-     người đó **biến mất** khỏi vòng (wheel co dần). Khi quay đủ, setup tạo
+     `_DrawWheelDialog` chứa **nhiều** [`DrawWheel`](lib/widgets/draw_wheel.dart)
+     (1 wheel/bảng, lưới 2 cột). Mỗi lần Quay: **mọi bảng còn slot quay ĐỒNG
+     THỜI** (`_planGroupRound` chọn distinct mỗi bảng 1 người từ pool còn lại),
+     xong cả lượt → `_commitGroupRound` gán hết, người đã bốc **biến mất** khỏi
+     mọi vòng (wheel co dần); bảng đủ người hiện badge ✓. Khi quay đủ, setup tạo
      `manualGroups` rồi gọi engine như luồng nhập tay. Các
      heading cấu hình/bốc thăm (`Số bảng`, `Tối đa mỗi bảng`, `Tổng số người`,
      `Hạt giống`, `Danh sách bốc thăm`) dùng badge màu để nổi trên nền sáng.
@@ -118,10 +120,11 @@ lib/
      phải hiện "2 – 1" champion first, không phải "1 – 2" theo p1/p2).
      Setup cũng có 2 cách nhập: **Nhập cặp** hoặc **Bốc thăm**. Bốc thăm
      nhập 1 hạt giống cho mỗi cặp mở màn và danh sách đối thủ còn lại; bấm
-     "Mở vòng quay" → cùng popup `DrawWheel`, mỗi lần Quay bốc 1 đối thủ cho
-     cặp trống kế tiếp (người bốc xong biến mất khỏi vòng); heading trong
-     phần bốc thăm dùng badge màu giống Đấu bảng. Kết quả trả về list theo
-     thứ tự `[seed1, opponent1, seed2, opponent2, ...]` rồi gọi `startDoubleElim`.
+     "Mở vòng quay" → cùng popup `_DrawWheelDialog` (1 wheel/cặp), mỗi lần Quay
+     mọi cặp trống bốc đối thủ ĐỒNG THỜI (`_planDeRound`/`_commitDeRound`),
+     người bốc xong biến mất khỏi mọi vòng; heading trong phần bốc thăm dùng
+     badge màu giống Đấu bảng. Kết quả trả về list theo thứ tự
+     `[seed1, opponent1, seed2, opponent2, ...]` rồi gọi `startDoubleElim`.
      Vòng quay (`DrawWheel`) chia múi pastel + emoji con vật random gán theo
      tên (ổn định khi vòng co lại), nhãn counter-rotate luôn thẳng đứng.
   Tap 1 fixture → bottom sheet nhập tỷ số → `LeagueController.updateScore` →
