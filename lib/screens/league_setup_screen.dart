@@ -675,8 +675,7 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       if (!LeagueEngine.doubleElimSizes.contains(names.length)) {
         setState(
           () => _errorText =
-              'Đấu nhánh cần tối thiểu 8 người và hỗ trợ 8/16/32 người '
-              '(hiện ${names.length}).',
+              'Đấu nhánh hỗ trợ 4/8/16/32 người (hiện ${names.length}).',
         );
         return;
       }
@@ -1544,8 +1543,9 @@ class _LeagueSetupScreenState extends ConsumerState<LeagueSetupScreen> {
       case _SetupMode.doubleElim:
         final n = _deControllers.length;
         if (!LeagueEngine.doubleElimSizes.contains(n)) return 0;
-        // Double-elim 1 trận chung kết tổng: WB (N-1) + LB (N-2) + GF.
-        return 2 * n - 2;
+        // WB (n-1) + LB (3n/4 - 1) + GF (1) = 7n/4 - 1.
+        // N=4→6, 8→13, 16→27, 32→55.
+        return (7 * n) ~/ 4 - 1;
       case _SetupMode.groupKnockout:
         final groupSizes = _groupInputMode == _GroupInputMode.draw
             ? _groupDrawTargetSizes

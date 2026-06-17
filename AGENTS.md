@@ -89,13 +89,13 @@ lib/
      `manualGroups` rồi gọi engine như luồng nhập tay. Các
      heading cấu hình/bốc thăm (`Số bảng`, `Tối đa mỗi bảng`, `Tổng số người`,
      `Hạt giống`, `Danh sách bốc thăm`) dùng badge màu để nổi trên nền sáng.
-  3. **Đấu nhánh kép (double-elim hybrid)**: N ∈ {8, 16, 32}. Setup nhập
+  3. **Đấu nhánh kép (double-elim hybrid)**: N ∈ {4, 8, 16, 32}. Setup nhập
      thủ công từng cặp đấu lượt 1 (không random). Engine sinh trước TOÀN BỘ
      bracket (nhánh thắng + nhánh thua + GF) với placeholder slot — fill dần
      qua source linkage (`sourceWinnerOfP*Id`, `sourceLoserOfP*Id`).
      Luật hybrid: chỉ loser của WB lượt 1-2 xuống LB; từ WB lượt 3 trở đi
      ai thua bị loại luôn. LB sau khi nhận loser WB R2 chạy single-elim để
-     lấy người vào GF. Tổng trận: 8 người = 13, 16 người = 27, 32 người = 55.
+     lấy người vào GF. Tổng trận (7N/4−1): 4 người = 6, 8 = 13, 16 = 27, 32 = 55.
      Mỗi `updateScore` cascade fill lại dependent fixtures; nếu sửa winner/
      loser thì invalidate descendants để GF không giữ slot cũ. `clearScore`
      đệ quy invalidate descendants.
