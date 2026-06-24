@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/nine_ball_state.dart';
@@ -63,7 +66,10 @@ class NineBallGameScreen extends ConsumerWidget {
       ),
       body: TableBackground(
         child: SafeArea(
-          child: Padding(
+          child: Column(
+            children: [
+              Expanded(
+                child: Padding(
             padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
@@ -151,6 +157,18 @@ class NineBallGameScreen extends ConsumerWidget {
                 ],
               ),
             ),
+                ),
+              ),
+              if (state.shotClockSeconds > 0)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                  child: ShotClockBar(
+                    // Key theo số giây → đổi cấu hình thì tạo lại controller.
+                    key: ValueKey('shotclock_${state.shotClockSeconds}'),
+                    seconds: state.shotClockSeconds,
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -278,6 +296,193 @@ class _ScorePanel extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Thanh đồng hồ giây (shot clock) ở đáy màn chơi Pool. Bấm "Chạy" →
+/// thanh đếm ngược: xanh lá → vàng → đỏ theo thời gian còn lại. Hết giờ →
+/// chuông báo (SystemSound + rung lặp) + popup; chạm popup mới reset & cho
+/// chạy lại.
+class ShotClockBar extends StatefulWidget {
+  const ShotClockBar({super.key, required this.seconds});
+
+  final int seconds;
+
+  @override
+  State<ShotClockBar> createState() => _ShotClockBarState();
+}
+
+class _ShotClockBarState extends State<ShotClockBar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  Timer? _alarmTimer;
+  bool _alarmActive = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: Duration(seconds: widget.seconds),
+    )..addStatusListener(_onStatus);
+  }
+
+  @override
+  void dispose() {
+    _alarmTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _onExpire();
+    }
+  }
+
+  void _run() {
+    if (_alarmActive) return;
+    _controller.forward(from: 0);
+    setState(() {});
+  }
+
+  void _reset() {
+    _controller.stop();
+    _controller.reset();
+    setState(() {});
+  }
+
+  void _beep() {
+    SystemSound.play(SystemSoundType.alert);
+    HapticFeedback.heavyImpact();
+  }
+
+  Future<void> _onExpire() async {
+    _alarmActive = true;
+    _beep();
+    _alarmTimer = Timer.periodic(
+      const Duration(milliseconds: 700),
+      (_) => _beep(),
+    );
+    if (mounted) setState(() {});
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AlertDialog(
+        icon: const Icon(
+          Icons.alarm_rounded,
+          color: Color(0xFFD93838),
+          size: 40,
+        ),
+        title: const Text('Hết giờ!', textAlign: TextAlign.center),
+        content: const Text(
+          'Đã hết thời gian cho cú đánh này.',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Đánh tiếp'),
+          ),
+        ],
+      ),
+    );
+
+    _alarmTimer?.cancel();
+    _alarmTimer = null;
+    _alarmActive = false;
+    if (mounted) {
+      _controller.reset();
+      setState(() {});
+    }
+  }
+
+  Color _zoneColor(double remaining) {
+    if (remaining > 0.5) return const Color(0xFF2E9E6F); // xanh lá
+    if (remaining > 0.25) return const Color(0xFFF2B544); // vàng
+    return const Color(0xFFD93838); // đỏ
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final remaining = 1 - _controller.value;
+        final remainingSecs = (_controller.value >= 1.0)
+            ? 0
+            : (widget.seconds * remaining).ceil();
+        final color = _zoneColor(remaining);
+        final running = _controller.isAnimating;
+
+        return Row(
+          children: [
+            // Số giây còn lại.
+            SizedBox(
+              width: 56,
+              child: Text(
+                '$remainingSecs',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 30,
+                  height: 1.0,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Thanh đếm ngược.
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: Container(
+                  height: 26,
+                  color: Colors.black.withAlpha(40),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      // Idle (chưa chạy) → đầy; đang/đã chạy → theo remaining.
+                      widthFactor: remaining.clamp(0.0, 1.0),
+                      child: Container(color: color),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Nút chạy / đặt lại.
+            SizedBox(
+              width: 96,
+              child: FilledButton.icon(
+                onPressed: _alarmActive
+                    ? null
+                    : running
+                    ? _reset
+                    : _run,
+                icon: Icon(
+                  running ? Icons.refresh_rounded : Icons.play_arrow_rounded,
+                  size: 20,
+                ),
+                label: Text(running ? 'Đặt lại' : 'Chạy'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: running ? const Color(0xFF5F726A) : color,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 44),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

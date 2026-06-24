@@ -8,6 +8,7 @@ class NineBallEngine {
     List<String> rawNames,
     int raceTarget, {
     String? variantLabel,
+    int shotClockSeconds = 0,
   }) {
     final names = rawNames
         .map((name) => name.trim())
@@ -40,6 +41,7 @@ class NineBallEngine {
       currentRack: 1,
       status: NineBallStatus.inProgress,
       variantLabel: variantLabel,
+      shotClockSeconds: shotClockSeconds,
     );
   }
 

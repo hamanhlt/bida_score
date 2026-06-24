@@ -46,6 +46,20 @@ lib/
   Setup có chip "Biến thể" (8/9/10-Ball/Khác) → lưu vào `NineBallState.variantLabel`
   → `MatchResult.modeLabel` khi kết thúc. Identifiers vẫn tên `NineBall*` vì
   Pool dùng race-to-X engine (đổi tên là refactor riêng nếu muốn).
+  **Đồng hồ giây (shot clock)**: Setup có card "Đồng hồ giây" với chip
+  Tắt(0)/30/45/60 + "Khác…" (custom 5–300s qua `_ShotClockInputDialog`),
+  default 30s. Lưu vào `NineBallState.shotClockSeconds` (0 = tắt) — config
+  hằng số/trận, persist qua `LastSetup.shotClockSeconds`
+  (`setPoolConfig(variantLabel, shotClockSeconds)`) để Setup auto-fill lần
+  sau. Game screen render `ShotClockBar` ở đáy KHI `shotClockSeconds > 0`:
+  thanh ngang đếm ngược dùng `AnimationController` (duration = số giây),
+  màu xanh lá (`>0.5`) → vàng (`>0.25`) → đỏ; nút "Chạy" `forward(from:0)`,
+  đang chạy đổi thành "Đặt lại" (`reset`). Hết giờ (`AnimationStatus.completed`)
+  → chuông báo lặp `Timer.periodic(700ms)` gọi `SystemSound.play(alert)` +
+  `HapticFeedback.heavyImpact()` (KHÔNG dùng package audio) + popup
+  AlertDialog "Hết giờ!"; chạm "Đánh tiếp" mới cancel chuông + reset thanh
+  cho chạy lại. Ticking sống trong StatefulWidget local — KHÔNG đẩy vào
+  Riverpod (tránh spam `listenSelf` persist).
 - `cashGame` (Chơi điểm) → CashGameSetupScreen / CashGameScreen /
   CashGameResultScreen. 2 người, tính tiền theo ván thắng + lỗ 10:
   tap panel người = +1 ván thắng cộng dồn toàn trận (+`moneyPerRack`);

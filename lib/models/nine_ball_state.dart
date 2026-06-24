@@ -12,6 +12,7 @@ class NineBallSnapshot {
     required this.status,
     List<String> rackWinnerNames = const [],
     this.variantLabel,
+    this.shotClockSeconds = 0,
   }) : players = List.unmodifiable(players),
        rackWins = List.unmodifiable(rackWins),
        rackWinnerNames = List.unmodifiable(rackWinnerNames);
@@ -30,6 +31,9 @@ class NineBallSnapshot {
   /// Biến thể Pool ("8-Ball"/"9-Ball"/"10-Ball"/tuỳ ý) — set lúc startGame,
   /// không đổi trong trận. Snapshot giữ để undo không lạc.
   final String? variantLabel;
+
+  /// Đồng hồ giây mỗi cú (shot clock). 0 = tắt.
+  final int shotClockSeconds;
 }
 
 class NineBallState {
@@ -43,6 +47,7 @@ class NineBallState {
     List<NineBallSnapshot> history = const [],
     List<String> rackWinnerNames = const [],
     this.variantLabel,
+    this.shotClockSeconds = 0,
   }) : players = List.unmodifiable(players),
        rackWins = List.unmodifiable(
          rackWins.isEmpty && players.isNotEmpty
@@ -68,6 +73,7 @@ class NineBallState {
       history: history,
       rackWinnerNames: snapshot.rackWinnerNames,
       variantLabel: snapshot.variantLabel,
+      shotClockSeconds: snapshot.shotClockSeconds,
     );
   }
 
@@ -86,6 +92,9 @@ class NineBallState {
   /// Biến thể Pool đã chọn ở Setup ("8-Ball"/"9-Ball"/"10-Ball"/tuỳ ý) — set
   /// lúc startGame, không đổi trong trận. Dùng làm `modeLabel` khi ghi MatchResult.
   final String? variantLabel;
+
+  /// Đồng hồ giây mỗi cú (shot clock). 0 = tắt. Set lúc startGame.
+  final int shotClockSeconds;
 
   bool get canUndo => history.isNotEmpty;
 
@@ -109,6 +118,7 @@ class NineBallState {
       status: status,
       rackWinnerNames: rackWinnerNames,
       variantLabel: variantLabel,
+      shotClockSeconds: shotClockSeconds,
     );
   }
 
@@ -122,6 +132,7 @@ class NineBallState {
     List<NineBallSnapshot>? history,
     List<String>? rackWinnerNames,
     String? variantLabel,
+    int? shotClockSeconds,
   }) {
     return NineBallState(
       players: players ?? this.players,
@@ -133,6 +144,7 @@ class NineBallState {
       history: history ?? this.history,
       rackWinnerNames: rackWinnerNames ?? this.rackWinnerNames,
       variantLabel: variantLabel ?? this.variantLabel,
+      shotClockSeconds: shotClockSeconds ?? this.shotClockSeconds,
     );
   }
 }

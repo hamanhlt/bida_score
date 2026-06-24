@@ -18,10 +18,12 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
   late final List<TextEditingController> _controllers;
   int _raceTarget = 5;
   String _variantLabel = '9-Ball';
+  int _shotClockSeconds = 30; // 0 = tắt
   String? _errorText;
 
   static const _raceOptions = [3, 5, 7, 9, 11];
   static const _variantOptions = ['8-Ball', '9-Ball', '10-Ball'];
+  static const _shotClockOptions = [30, 45, 60];
 
   @override
   void initState() {
@@ -30,10 +32,14 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
       TextEditingController(text: 'Người chơi 1'),
       TextEditingController(text: 'Người chơi 2'),
     ];
-    // Khôi phục biến thể đã chọn lần trước (nếu có).
-    final saved = ref.read(lastSetupProvider)?.variantLabel;
-    if (saved != null && saved.isNotEmpty) {
-      _variantLabel = saved;
+    // Khôi phục biến thể + đồng hồ giây đã chọn lần trước (nếu có).
+    final saved = ref.read(lastSetupProvider);
+    final savedVariant = saved?.variantLabel;
+    if (savedVariant != null && savedVariant.isNotEmpty) {
+      _variantLabel = savedVariant;
+    }
+    if (saved != null) {
+      _shotClockSeconds = saved.shotClockSeconds;
     }
   }
 
@@ -74,6 +80,18 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
     }
   }
 
+  Future<void> _showCustomShotClockDialog() async {
+    final result = await showDialog<int>(
+      context: context,
+      builder: (_) => _ShotClockInputDialog(
+        initial: _shotClockSeconds == 0 ? 30 : _shotClockSeconds,
+      ),
+    );
+    if (result != null) {
+      setState(() => _shotClockSeconds = result);
+    }
+  }
+
   void _startGame() {
     final names = _controllers.map((c) => c.text).toList();
     final trimmed = names.map((n) => n.trim()).toList();
@@ -90,7 +108,12 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
     try {
       ref
           .read(nineBallControllerProvider.notifier)
-          .startGame(names, _raceTarget, variantLabel: _variantLabel);
+          .startGame(
+            names,
+            _raceTarget,
+            variantLabel: _variantLabel,
+            shotClockSeconds: _shotClockSeconds,
+          );
     } on ArgumentError catch (e) {
       setState(() => _errorText = e.message.toString());
     }
@@ -267,6 +290,63 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 16),
+                // Đồng hồ giây (shot clock)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Đồng hồ giây',
+                          style: theme.textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Đếm ngược mỗi cú. Hết giờ kêu chuông báo.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: const Color(0xFF5F726A),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            ChoiceChip(
+                              label: const Text('Tắt'),
+                              selected: _shotClockSeconds == 0,
+                              onSelected: (_) {
+                                setState(() => _shotClockSeconds = 0);
+                              },
+                            ),
+                            for (final s in _shotClockOptions)
+                              ChoiceChip(
+                                label: Text('${s}s'),
+                                selected: _shotClockSeconds == s,
+                                onSelected: (_) {
+                                  setState(() => _shotClockSeconds = s);
+                                },
+                              ),
+                            if (_shotClockSeconds != 0 &&
+                                !_shotClockOptions.contains(_shotClockSeconds))
+                              ChoiceChip(
+                                label: Text('${_shotClockSeconds}s'),
+                                selected: true,
+                                onSelected: (_) {},
+                              ),
+                            ActionChip(
+                              avatar: const Icon(Icons.edit_rounded, size: 16),
+                              label: const Text('Khác…'),
+                              onPressed: _showCustomShotClockDialog,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 if (_errorText != null) ...[
                   const SizedBox(height: 16),
                   Text(
@@ -432,6 +512,67 @@ class _VariantInputDialogState extends State<_VariantInputDialog> {
           onPressed: _confirm,
           child: const Text('Áp dụng'),
         ),
+      ],
+    );
+  }
+}
+
+/// Dialog nhập số giây đồng hồ tuỳ ý (5–300). Tách StatefulWidget riêng để
+/// controller dispose đúng lifecycle.
+class _ShotClockInputDialog extends StatefulWidget {
+  const _ShotClockInputDialog({required this.initial});
+
+  final int initial;
+
+  @override
+  State<_ShotClockInputDialog> createState() => _ShotClockInputDialogState();
+}
+
+class _ShotClockInputDialogState extends State<_ShotClockInputDialog> {
+  late final TextEditingController _controller;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: '${widget.initial}');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _confirm() {
+    final n = int.tryParse(_controller.text.trim());
+    if (n == null || n < 5 || n > 300) {
+      setState(() => _error = 'Nhập số giây 5–300.');
+      return;
+    }
+    Navigator.of(context).pop(n);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Đồng hồ giây'),
+      content: TextField(
+        controller: _controller,
+        keyboardType: TextInputType.number,
+        autofocus: true,
+        onSubmitted: (_) => _confirm(),
+        decoration: InputDecoration(
+          labelText: 'Số giây mỗi cú',
+          errorText: _error,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Hủy'),
+        ),
+        FilledButton(onPressed: _confirm, child: const Text('Áp dụng')),
       ],
     );
   }

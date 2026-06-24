@@ -26,19 +26,21 @@ class NineBallController extends Notifier<NineBallState> {
     List<String> names,
     int raceTarget, {
     String? variantLabel,
+    int shotClockSeconds = 0,
   }) {
     state = _engine.startGame(
       names,
       raceTarget,
       variantLabel: variantLabel,
+      shotClockSeconds: shotClockSeconds,
     );
     // Engine throw nếu validation fail → state không update → dòng dưới
     // không chạy. Lưu tên vào pool dùng chung → Setup screen lần sau gợi ý.
     unawaited(ref.read(playerNameHistoryProvider.notifier).addAll(names));
-    // Persist variantLabel để Setup mở lần sau auto-select chip cũ.
-    if (variantLabel != null) {
-      ref.read(lastSetupProvider.notifier).setVariant(variantLabel);
-    }
+    // Persist variant + shot clock để Setup mở lần sau auto-select.
+    ref
+        .read(lastSetupProvider.notifier)
+        .setPoolConfig(variantLabel ?? '9-Ball', shotClockSeconds);
   }
 
   void winRack(int winnerIndex) {
