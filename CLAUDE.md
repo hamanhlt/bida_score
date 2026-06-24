@@ -54,7 +54,11 @@ lib/
   sau. Game screen render `ShotClockBar` ở đáy KHI `shotClockSeconds > 0`:
   thanh ngang đếm ngược dùng `AnimationController` (duration = số giây),
   màu xanh lá (`>0.5`) → vàng (`>0.25`) → đỏ; nút "Chạy" `forward(from:0)`,
-  đang chạy đổi thành "Đặt lại" (`reset`). Hết giờ (`AnimationStatus.completed`)
+  đang chạy đổi thành "Đặt lại" (`reset`). Vào vùng đỏ (`remaining ≤ 0.25` &
+  đang chạy) → hiệu ứng **rực lửa**: `_flameController` thứ 2 (420ms,
+  `repeat(reverse)`, chỉ chạy trong vùng đỏ để khỏi tốn frame) lerp gradient
+  lửa (đỏ thẫm→cam→vàng ở mép) + glow cam (`BoxShadow` nhấp nháy) + số giây
+  nhấp nháy đỏ↔cam kèm `Shadow`. Hết giờ (`AnimationStatus.completed`)
   → chuông báo lặp `Timer.periodic(700ms)` gọi `SystemSound.play(alert)` +
   `HapticFeedback.heavyImpact()` (KHÔNG dùng package audio) + popup
   AlertDialog "Hết giờ!"; chạm "Đánh tiếp" mới cancel chuông + reset thanh
@@ -303,8 +307,10 @@ fail → `errorBuilder` render bi vẽ → không throw.)
 
 File: [lib/screens/nine_ball_game_screen.dart](lib/screens/nine_ball_game_screen.dart)
 
-Layout dùng `_SideColumn` per side (name + Material panel + −1 button) trong outer
-`Row` với Race chip ở giữa. Để giữ cân bằng:
+Layout dùng `_SideColumn` per side (hàng đầu = nút "−1" + tên căn giữa theo
+cụm, rồi Material panel chiếm phần còn lại) trong outer `Row` với Race chip ở
+giữa. "−1" để cạnh tên (không phải dưới panel) để panel điểm cao/to hơn. Để
+giữ cân bằng:
 - Cả 2 side dùng cùng widget `_SideColumn` → tự động equal width via Row Expanded.
 - Material panel ở Column với `crossAxisAlignment: stretch` → fill width.
 - Outer Row `crossAxisAlignment: stretch` → fill height.

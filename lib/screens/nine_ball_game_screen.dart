@@ -196,9 +196,9 @@ class NineBallGameScreen extends ConsumerWidget {
   }
 }
 
-/// Cột dọc cho 1 người chơi: tên ở trên (center), panel điểm chiếm phần
-/// lớn chiều cao, nút "−1" ở dưới. Tất cả share cùng width của Expanded
-/// → name và button luôn aligned theo trục dọc với panel của họ.
+/// Cột dọc cho 1 người chơi: hàng đầu = nút "−1" + tên (căn giữa theo cụm),
+/// panel điểm chiếm toàn bộ phần còn lại. Gộp "−1" lên cạnh tên (thay vì để
+/// dưới) → panel điểm cao hơn, số to & dễ nhìn hơn.
 class _SideColumn extends StatelessWidget {
   const _SideColumn({
     required this.name,
@@ -220,33 +220,40 @@ class _SideColumn extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
-          height: 32,
-          child: Center(
-            child: Text(
-              name,
-              style: const TextStyle(
-                color: Color(0xFF1F2937),
-                fontWeight: FontWeight.w800,
-                fontSize: 22,
+          height: 36,
+          // "−1" sát mép trái, tên căn giữa panel (padding 2 bên = chỗ nút
+          // để tên không bị nút đè khi dài).
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 52),
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    color: Color(0xFF1F2937),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 22,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _DecrementButton(onPressed: onDecrement),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Expanded(
           child: _ScorePanel(
             wins: wins,
             panelColor: panelColor,
             onTap: onTap,
           ),
-        ),
-        const SizedBox(height: 4),
-        SizedBox(
-          height: 32,
-          child: Center(child: _DecrementButton(onPressed: onDecrement)),
         ),
       ],
     );
@@ -314,8 +321,10 @@ class ShotClockBar extends StatefulWidget {
 }
 
 class _ShotClockBarState extends State<ShotClockBar>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _controller;
+  // Nhấp nháy "rực lửa" khi vào vùng đỏ — repeat reverse, chỉ chạy khi cần.
+  late final AnimationController _flameController;
   Timer? _alarmTimer;
   bool _alarmActive = false;
 
@@ -325,14 +334,34 @@ class _ShotClockBarState extends State<ShotClockBar>
     _controller = AnimationController(
       vsync: this,
       duration: Duration(seconds: widget.seconds),
-    )..addStatusListener(_onStatus);
+    )
+      ..addStatusListener(_onStatus)
+      ..addListener(_updateFlame);
+    _flameController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
   }
 
   @override
   void dispose() {
     _alarmTimer?.cancel();
+    _flameController.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Bật ngọn lửa nhấp nháy khi đang chạy & còn ≤25% thời gian; tắt khi ra
+  /// khỏi vùng đỏ / dừng / hết giờ để khỏi tốn frame.
+  void _updateFlame() {
+    final remaining = 1 - _controller.value;
+    final inRed =
+        _controller.isAnimating && remaining > 0 && remaining <= 0.25;
+    if (inRed && !_flameController.isAnimating) {
+      _flameController.repeat(reverse: true);
+    } else if (!inRed && _flameController.isAnimating) {
+      _flameController.stop();
+    }
   }
 
   void _onStatus(AnimationStatus status) {
@@ -408,7 +437,7 @@ class _ShotClockBarState extends State<ShotClockBar>
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _controller,
+      animation: Listenable.merge([_controller, _flameController]),
       builder: (context, _) {
         final remaining = 1 - _controller.value;
         final remainingSecs = (_controller.value >= 1.0)
@@ -416,38 +445,88 @@ class _ShotClockBarState extends State<ShotClockBar>
             : (widget.seconds * remaining).ceil();
         final color = _zoneColor(remaining);
         final running = _controller.isAnimating;
+        // Vùng đỏ + đang chạy → bật hiệu ứng rực lửa.
+        final inRed = running && remaining > 0 && remaining <= 0.25;
+        final flame = _flameController.value; // 0..1 (reverse)
 
         return Row(
           children: [
-            // Số giây còn lại.
+            // Số giây còn lại — vùng đỏ thì nhấp nháy đỏ ↔ cam như than lửa.
             SizedBox(
               width: 56,
               child: Text(
                 '$remainingSecs',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: color,
+                  color: inRed
+                      ? Color.lerp(color, const Color(0xFFFFC107), flame)
+                      : color,
                   fontWeight: FontWeight.w900,
                   fontSize: 30,
                   height: 1.0,
                   fontFeatures: const [FontFeature.tabularFigures()],
+                  shadows: inRed
+                      ? [
+                          Shadow(
+                            color: const Color(
+                              0xFFFF6B00,
+                            ).withAlpha((150 + 105 * flame).round()),
+                            blurRadius: 8 + 10 * flame,
+                          ),
+                        ]
+                      : null,
                 ),
               ),
             ),
             const SizedBox(width: 8),
-            // Thanh đếm ngược.
+            // Thanh đếm ngược — vùng đỏ thì glow cam + gradient lửa ở mép.
             Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: Container(
-                  height: 26,
-                  color: Colors.black.withAlpha(40),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: FractionallySizedBox(
-                      // Idle (chưa chạy) → đầy; đang/đã chạy → theo remaining.
-                      widthFactor: remaining.clamp(0.0, 1.0),
-                      child: Container(color: color),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: inRed
+                      ? [
+                          BoxShadow(
+                            color: const Color(
+                              0xFFFF6B00,
+                            ).withAlpha((90 + 110 * flame).round()),
+                            blurRadius: 8 + 14 * flame,
+                            spreadRadius: 1 + 2 * flame,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    height: 26,
+                    color: Colors.black.withAlpha(40),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        // Idle (chưa chạy) → đầy; đang/đã chạy → theo remaining.
+                        widthFactor: remaining.clamp(0.0, 1.0),
+                        child: inRed
+                            ? Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.centerLeft,
+                                    end: Alignment.centerRight,
+                                    colors: [
+                                      const Color(0xFF7A0C0C),
+                                      const Color(0xFFD93838),
+                                      Color.lerp(
+                                        const Color(0xFFFF5722),
+                                        const Color(0xFFFFC107),
+                                        flame,
+                                      )!,
+                                    ],
+                                    stops: const [0.0, 0.55, 1.0],
+                                  ),
+                                ),
+                              )
+                            : Container(color: color),
+                      ),
                     ),
                   ),
                 ),
