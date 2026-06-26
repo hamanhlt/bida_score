@@ -8,11 +8,13 @@ import 'models/game_snapshot.dart';
 import 'models/league_session.dart';
 import 'models/league_state.dart';
 import 'models/nine_ball_state.dart';
+import 'models/pool_session.dart';
 import 'providers/cash_game_controller.dart';
 import 'providers/game_controller.dart';
 import 'providers/league_controller.dart';
 import 'providers/league_session_controller.dart';
 import 'providers/nine_ball_controller.dart';
+import 'providers/pool_session_controller.dart';
 import 'screens/cash_game_result_screen.dart';
 import 'screens/cash_game_screen.dart';
 import 'screens/cash_game_setup_screen.dart';
@@ -23,6 +25,7 @@ import 'screens/league_result_screen.dart';
 import 'screens/league_setup_screen.dart';
 import 'screens/mode_selection_screen.dart';
 import 'screens/nine_ball_game_screen.dart';
+import 'screens/nine_ball_list_screen.dart';
 import 'screens/nine_ball_result_screen.dart';
 import 'screens/nine_ball_setup_screen.dart';
 import 'screens/result_screen.dart';
@@ -188,6 +191,11 @@ class _AppShell extends ConsumerWidget {
   }
 
   Widget _buildNineBallShell(WidgetRef ref) {
+    // viewMode quyết định màn ngoài cùng (list nhiều trận vs trận hiện tại).
+    final session = ref.watch(poolSessionControllerProvider);
+    if (session.viewMode == PoolViewMode.list) {
+      return const NineBallListScreen(key: ValueKey(PoolViewMode.list));
+    }
     final nbState = ref.watch(nineBallControllerProvider);
 
     return AnimatedSwitcher(

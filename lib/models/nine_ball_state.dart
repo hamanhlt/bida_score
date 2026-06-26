@@ -13,6 +13,8 @@ class NineBallSnapshot {
     List<String> rackWinnerNames = const [],
     this.variantLabel,
     this.shotClockSeconds = 0,
+    this.id = '',
+    this.startedAt,
   }) : players = List.unmodifiable(players),
        rackWins = List.unmodifiable(rackWins),
        rackWinnerNames = List.unmodifiable(rackWinnerNames);
@@ -23,6 +25,13 @@ class NineBallSnapshot {
   final int breakerIndex;
   final int currentRack;
   final NineBallStatus status;
+
+  /// Id trận (sinh ở engine lúc startGame) — giữ trong snapshot để undo không
+  /// làm lạc id (kéo theo mất liên kết với active list).
+  final String id;
+
+  /// Thời điểm bắt đầu trận — hiển thị ở list các trận đang chơi.
+  final DateTime? startedAt;
 
   /// Tên người thắng từng rack theo thứ tự (rack 1 = phần tử 0, ...). Snapshot
   /// giữ luôn để undo khôi phục đúng.
@@ -48,6 +57,8 @@ class NineBallState {
     List<String> rackWinnerNames = const [],
     this.variantLabel,
     this.shotClockSeconds = 0,
+    this.id = '',
+    this.startedAt,
   }) : players = List.unmodifiable(players),
        rackWins = List.unmodifiable(
          rackWins.isEmpty && players.isNotEmpty
@@ -74,6 +85,8 @@ class NineBallState {
       rackWinnerNames: snapshot.rackWinnerNames,
       variantLabel: snapshot.variantLabel,
       shotClockSeconds: snapshot.shotClockSeconds,
+      id: snapshot.id,
+      startedAt: snapshot.startedAt,
     );
   }
 
@@ -96,7 +109,20 @@ class NineBallState {
   /// Đồng hồ giây mỗi cú (shot clock). 0 = tắt. Set lúc startGame.
   final int shotClockSeconds;
 
+  /// Id trận — sinh ở engine lúc startGame. '' nghĩa là chưa start (initial).
+  /// Dùng làm identity trong active list + session (mirror League).
+  final String id;
+
+  /// Thời điểm bắt đầu trận — hiển thị "Bắt đầu dd/mm hh:mm" ở list.
+  final DateTime? startedAt;
+
   bool get canUndo => history.isNotEmpty;
+
+  /// Nhãn hiển thị ở list/lịch sử: tên 2 người + biến thể.
+  String get displayName {
+    if (players.length < 2) return variantLabel ?? 'Pool';
+    return '${players[0].name} vs ${players[1].name}';
+  }
 
   Player get breaker => players[breakerIndex];
 
@@ -119,6 +145,8 @@ class NineBallState {
       rackWinnerNames: rackWinnerNames,
       variantLabel: variantLabel,
       shotClockSeconds: shotClockSeconds,
+      id: id,
+      startedAt: startedAt,
     );
   }
 
@@ -135,6 +163,8 @@ class NineBallState {
     'rackWinnerNames': rackWinnerNames,
     if (variantLabel != null) 'variantLabel': variantLabel,
     'shotClockSeconds': shotClockSeconds,
+    'id': id,
+    if (startedAt != null) 'startedAt': startedAt!.toIso8601String(),
   };
 
   factory NineBallState.fromJson(Map<String, dynamic> json) => NineBallState(
@@ -151,6 +181,10 @@ class NineBallState {
         const [],
     variantLabel: json['variantLabel'] as String?,
     shotClockSeconds: json['shotClockSeconds'] as int? ?? 0,
+    id: json['id'] as String? ?? '',
+    startedAt: json['startedAt'] != null
+        ? DateTime.tryParse(json['startedAt'] as String)
+        : null,
   );
 
   NineBallState copyWith({
@@ -164,6 +198,8 @@ class NineBallState {
     List<String>? rackWinnerNames,
     String? variantLabel,
     int? shotClockSeconds,
+    String? id,
+    DateTime? startedAt,
   }) {
     return NineBallState(
       players: players ?? this.players,
@@ -176,6 +212,8 @@ class NineBallState {
       rackWinnerNames: rackWinnerNames ?? this.rackWinnerNames,
       variantLabel: variantLabel ?? this.variantLabel,
       shotClockSeconds: shotClockSeconds ?? this.shotClockSeconds,
+      id: id ?? this.id,
+      startedAt: startedAt ?? this.startedAt,
     );
   }
 }

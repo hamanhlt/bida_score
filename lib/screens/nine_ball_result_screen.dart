@@ -128,11 +128,10 @@ class NineBallResultScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 20),
                 FilledButton.icon(
-                  onPressed: ref
-                      .read(nineBallControllerProvider.notifier)
-                      .resetGame,
-                  icon: const Icon(Icons.replay_rounded),
-                  label: const Text('Trận mới'),
+                  onPressed:
+                      ref.read(nineBallControllerProvider.notifier).backToList,
+                  icon: const Icon(Icons.list_rounded),
+                  label: const Text('Về danh sách'),
                 ),
                   ],
                 ),

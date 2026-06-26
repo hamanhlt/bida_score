@@ -42,10 +42,24 @@ lib/
 
 **Routing**: `_AppShell` ở [app.dart](lib/app.dart) chọn shell theo `gameState.gameMode`:
 - `penalty369` → SetupScreen / GameScreen / ResultScreen
-- `pool` → NineBallSetupScreen / NineBallGameScreen / NineBallResultScreen.
+- `pool` → NineBallListScreen (landing) → NineBallSetupScreen /
+  NineBallGameScreen / NineBallResultScreen. Hỗ trợ **nhiều trận song song**
+  giống League: mỗi trận có `id` riêng (sinh ở engine `startGame`), lưu vào
+  list `active_pools_v1` qua `ActivePoolsController` (listenSelf auto-persist);
+  switch giữa các trận không mất tỷ số. Routing: `_buildNineBallShell` xem
+  `poolSessionControllerProvider.viewMode` — `list` → NineBallListScreen,
+  `current` → route theo `NineBallState.status` (setup/inProgress/finished).
+  Session (`pool_session_v1`) lưu {viewMode, currentId} → cold start mở lại
+  đúng màn. Tap trận → `openMatch`; nút "Tạo trận mới" → `createNew`; back ở
+  game screen → `backToList` (giữ trận); "Huỷ trận" → `cancelMatch` (xoá khỏi
+  list, không ghi lịch sử); đạt race target / "Kết thúc trận" → finished →
+  remove khỏi list + ghi `MatchHistory`. `NineBallController` mirror
+  `LeagueController` (sync active list qua listenSelf, restore từ
+  session.currentId, defer `goToList` nếu id stale).
   Setup có chip "Biến thể" (8/9/10-Ball/Khác) → lưu vào `NineBallState.variantLabel`
-  → `MatchResult.modeLabel` khi kết thúc. Identifiers vẫn tên `NineBall*` vì
-  Pool dùng race-to-X engine (đổi tên là refactor riêng nếu muốn).
+  → `MatchResult.modeLabel` khi kết thúc. Race-to nhập tuỳ ý 1–999 (dialog
+  "Khác…"). Identifiers vẫn tên `NineBall*` vì Pool dùng race-to-X engine
+  (đổi tên là refactor riêng nếu muốn).
   **Đồng hồ giây (shot clock)**: Setup có card "Đồng hồ giây" với chip
   Tắt(0)/30/45/60 + "Khác…" (custom 5–300s qua `_ShotClockInputDialog`),
   default 30s. Lưu vào `NineBallState.shotClockSeconds` (0 = tắt) — config
@@ -81,7 +95,8 @@ lib/
   tiền còn lại sau đối trừ} vào match history. Result screen hiện người thắng
   + chênh lệch (moneyDifference) phải trả và "Các ván đã chốt". `formatVnd`
   format "360.000"; lịch sử Chơi điểm cũng dùng format này thay vì số thô.
-  KHÔNG persist state đang chơi qua kill (khác Pool — Pool nay persist được).
+  KHÔNG persist state đang chơi qua kill (khác Pool — Pool nay persist nhiều
+  trận song song).
 - `league` → LeagueListScreen (landing) → LeagueSetupScreen /
   LeaguePlayScreen / LeagueResultScreen của 1 giải cụ thể. Hỗ trợ
   **nhiều giải song song**: mỗi giải có `id` riêng (sinh ở engine), lưu
@@ -192,12 +207,15 @@ tạo state từ seed. Cold start có data ngay, không cần loading screen.
 
 Mỗi service 1 storage key với version suffix (vd `match_history_v1`):
 - `GamePersistence` → state Bắn đền đang chơi (gồm `scoreEvents` per-turn log)
-- `NineBallPersistence` (`active_pool_state_v1`) → state Pool đang chơi
-  (`NineBallState.toJson`, bỏ undo `history`) → chơi dở kill app vẫn vào đánh
-  tiếp. Chỉ lưu khi `status == inProgress`; setup/finished thì xoá. Preload ở
-  `main.dart` qua `initialNineBallStateProvider`; controller `listenSelf`
-  auto-save. Routing pool vẫn dựa trên GameState `{pool, setup}` (đã persist
-  sẵn qua `GamePersistence`) → cold start vào thẳng `NineBallGameScreen`.
+- Pool trio (mirror League trio):
+  - `ActivePoolsStorage` (`active_pools_v1`) → list trận Pool đang chơi
+    (`NineBallState.toJson`, bỏ undo `history`). Per-entry try/catch. Migrate
+    1 lần từ key cũ `active_pool_state_v1` (single-state, phiên trước).
+  - `PoolSessionStorage` (`pool_session_v1`) → `{viewMode, currentId}` để mở
+    app lại đúng màn (list / trận hiện tại).
+  - Preload ở `main.dart` qua `activePoolsSeedProvider` + `poolSessionSeedProvider`.
+    Routing pool vẫn cần GameState `{pool, setup}` (persist qua `GamePersistence`)
+    để `_AppShell` vào nhánh pool; session quyết định list vs trận.
 - `SetupPersistence` → setup gần nhất (auto-fill Setup screen)
 - `PlayerNameHistoryStorage` → LRU 50 tên đã nhập (pool dùng chung mọi mode).
   `GameController.startGame` + `NineBallController.startGame` đều `addAll(names)`.

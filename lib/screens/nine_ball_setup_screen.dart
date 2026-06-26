@@ -139,7 +139,7 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
                   alignment: Alignment.centerLeft,
                   child: IconButton(
                     onPressed: () {
-                      ref.read(gameControllerProvider.notifier).resetGame();
+                      ref.read(nineBallControllerProvider.notifier).backToList();
                     },
                     icon: const Icon(Icons.arrow_back),
                     padding: EdgeInsets.zero,

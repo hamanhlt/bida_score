@@ -33,6 +33,12 @@ class NineBallGameScreen extends ConsumerWidget {
       appBar: AppBar(
         foregroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          tooltip: 'Danh sách trận',
+          // Về list — trận vẫn lưu trong active list để chơi tiếp sau.
+          onPressed: controller.backToList,
+        ),
         title: Text(
           '$modeLabel — Rack ${state.currentRack}',
           style: const TextStyle(
@@ -52,14 +58,14 @@ class NineBallGameScreen extends ConsumerWidget {
             onSelected: (action) async {
               if (action == 'finish') {
                 controller.finishGame();
-              } else if (action == 'reset') {
-                final ok = await _showResetDialog(context);
-                if (ok == true) controller.resetGame();
+              } else if (action == 'cancel') {
+                final ok = await _showCancelDialog(context);
+                if (ok == true) controller.cancelMatch();
               }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'finish', child: Text('Kết thúc trận')),
-              PopupMenuItem(value: 'reset', child: Text('Làm mới trận')),
+              PopupMenuItem(value: 'cancel', child: Text('Huỷ trận')),
             ],
           ),
         ],
@@ -175,20 +181,22 @@ class NineBallGameScreen extends ConsumerWidget {
     );
   }
 
-  Future<bool?> _showResetDialog(BuildContext context) {
+  Future<bool?> _showCancelDialog(BuildContext context) {
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Làm mới trận?'),
-        content: const Text('Toàn bộ kết quả sẽ bị xóa.'),
+        title: const Text('Huỷ trận này?'),
+        content: const Text(
+          'Trận sẽ bị xoá khỏi danh sách và không ghi vào lịch sử.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Hủy'),
+            child: const Text('Không'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Làm mới'),
+            child: const Text('Huỷ trận'),
           ),
         ],
       ),
