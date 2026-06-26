@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/nine_ball_state.dart';
 import '../providers/nine_ball_controller.dart';
+import '../widgets/nine_ball_log_sheet.dart';
 import '../widgets/table_background.dart';
 
 class NineBallGameScreen extends ConsumerWidget {
@@ -47,6 +48,16 @@ class NineBallGameScreen extends ConsumerWidget {
           ),
         ),
         actions: [
+          IconButton(
+            onPressed: () => showNineBallLogSheet(
+              context,
+              playerNames: [for (final p in state.players) p.name],
+              log: state.log,
+            ),
+            icon: const Icon(Icons.history_rounded),
+            color: Colors.white,
+            tooltip: 'Lịch sử thao tác',
+          ),
           IconButton(
             onPressed: state.canUndo ? controller.undo : null,
             icon: const Icon(Icons.undo_rounded),

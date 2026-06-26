@@ -102,6 +102,10 @@ void main() {
       final history = await c.read(matchHistoryControllerProvider.future);
       expect(history, hasLength(1));
       expect(history.first.modeLabel, '9-Ball');
+      // Log thao tác đi kèm vào lịch sử chung (time + +1/−1).
+      expect(history.first.poolLog, hasLength(1));
+      expect(history.first.poolLog.first.delta, 1);
+      expect(history.first.poolLog.first.playerName, 'An');
     });
 
     test('cancelMatch xoá khỏi list, không ghi lịch sử, về list view',
@@ -185,6 +189,61 @@ void main() {
         c.read(poolSessionControllerProvider).viewMode,
         PoolViewMode.list,
       );
+    });
+  });
+
+  group('NineBall log thao tác', () {
+    test('winRack +1, decrementWin −1 — đúng delta + tỷ số chạy', () {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+
+      final ctrl = c.read(nineBallControllerProvider.notifier);
+      ctrl.startGame(['An', 'Bình'], 5);
+      // Kịch bản của user: bấm nhầm An thắng, sửa lại −1 An rồi +1 Bình.
+      ctrl.winRack(0); // +1 An
+      ctrl.decrementWin(0); // −1 An (sửa nhầm)
+      ctrl.winRack(1); // +1 Bình
+
+      final log = c.read(nineBallControllerProvider).log;
+      expect(log, hasLength(3));
+      expect(log[0].playerName, 'An');
+      expect(log[0].delta, 1);
+      expect(log[0].winsAfter, [1, 0]);
+      expect(log[1].playerName, 'An');
+      expect(log[1].delta, -1);
+      expect(log[1].winsAfter, [0, 0]);
+      expect(log[2].playerName, 'Bình');
+      expect(log[2].delta, 1);
+      expect(log[2].winsAfter, [0, 1]);
+    });
+
+    test('undo gỡ luôn entry log cuối', () {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+
+      final ctrl = c.read(nineBallControllerProvider.notifier);
+      ctrl.startGame(['An', 'Bình'], 5);
+      ctrl.winRack(0);
+      expect(c.read(nineBallControllerProvider).log, hasLength(1));
+      ctrl.undo();
+      expect(c.read(nineBallControllerProvider).log, isEmpty);
+    });
+
+    test('log round-trip qua JSON (persist + restore)', () {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final ctrl = c.read(nineBallControllerProvider.notifier);
+      ctrl.startGame(['An', 'Bình'], 5);
+      ctrl.winRack(0);
+      ctrl.winRack(1);
+      final state = c.read(nineBallControllerProvider);
+
+      final restored = NineBallState.fromJson(state.toJson());
+      expect(restored.log, hasLength(2));
+      expect(restored.log[0].playerName, 'An');
+      expect(restored.log[0].delta, 1);
+      expect(restored.log[1].playerName, 'Bình');
+      expect(restored.log[1].winsAfter, [1, 1]);
     });
   });
 

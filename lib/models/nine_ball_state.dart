@@ -2,6 +2,45 @@ import 'player.dart';
 
 enum NineBallStatus { setup, inProgress, finished }
 
+/// 1 dòng log thao tác trong trận Pool — ai được cộng/trừ ván, lúc nào, tỷ số
+/// sau đó. Mục đích: minh bạch khi sửa nhầm (vd bấm nhầm bên thắng → −1 bên đó
+/// rồi +1 bên kia) để khỏi cãi nhau.
+class NineBallLogEntry {
+  NineBallLogEntry({
+    required this.at,
+    required this.playerName,
+    required this.delta,
+    required List<int> winsAfter,
+  }) : winsAfter = List.unmodifiable(winsAfter);
+
+  /// Thời điểm thao tác.
+  final DateTime at;
+
+  /// Tên người chơi bị tác động.
+  final String playerName;
+
+  /// +1 = thắng 1 ván; −1 = sửa giảm 1 ván.
+  final int delta;
+
+  /// Tỷ số 2 bên ngay sau thao tác (chạy theo trận).
+  final List<int> winsAfter;
+
+  Map<String, dynamic> toJson() => {
+    'at': at.toIso8601String(),
+    'playerName': playerName,
+    'delta': delta,
+    'winsAfter': winsAfter,
+  };
+
+  factory NineBallLogEntry.fromJson(Map<String, dynamic> json) =>
+      NineBallLogEntry(
+        at: DateTime.parse(json['at'] as String),
+        playerName: json['playerName'] as String,
+        delta: json['delta'] as int,
+        winsAfter: (json['winsAfter'] as List<dynamic>).cast<int>(),
+      );
+}
+
 class NineBallSnapshot {
   NineBallSnapshot({
     required List<Player> players,
@@ -15,9 +54,11 @@ class NineBallSnapshot {
     this.shotClockSeconds = 0,
     this.id = '',
     this.startedAt,
+    List<NineBallLogEntry> log = const [],
   }) : players = List.unmodifiable(players),
        rackWins = List.unmodifiable(rackWins),
-       rackWinnerNames = List.unmodifiable(rackWinnerNames);
+       rackWinnerNames = List.unmodifiable(rackWinnerNames),
+       log = List.unmodifiable(log);
 
   final List<Player> players;
   final List<int> rackWins;
@@ -25,6 +66,9 @@ class NineBallSnapshot {
   final int breakerIndex;
   final int currentRack;
   final NineBallStatus status;
+
+  /// Log thao tác +1/−1 theo thời gian (xem [NineBallLogEntry]).
+  final List<NineBallLogEntry> log;
 
   /// Id trận (sinh ở engine lúc startGame) — giữ trong snapshot để undo không
   /// làm lạc id (kéo theo mất liên kết với active list).
@@ -59,6 +103,7 @@ class NineBallState {
     this.shotClockSeconds = 0,
     this.id = '',
     this.startedAt,
+    List<NineBallLogEntry> log = const [],
   }) : players = List.unmodifiable(players),
        rackWins = List.unmodifiable(
          rackWins.isEmpty && players.isNotEmpty
@@ -66,7 +111,8 @@ class NineBallState {
              : rackWins,
        ),
        history = List.unmodifiable(history),
-       rackWinnerNames = List.unmodifiable(rackWinnerNames);
+       rackWinnerNames = List.unmodifiable(rackWinnerNames),
+       log = List.unmodifiable(log);
 
   factory NineBallState.initial() => NineBallState();
 
@@ -87,6 +133,7 @@ class NineBallState {
       shotClockSeconds: snapshot.shotClockSeconds,
       id: snapshot.id,
       startedAt: snapshot.startedAt,
+      log: snapshot.log,
     );
   }
 
@@ -115,6 +162,10 @@ class NineBallState {
 
   /// Thời điểm bắt đầu trận — hiển thị "Bắt đầu dd/mm hh:mm" ở list.
   final DateTime? startedAt;
+
+  /// Log thao tác +1/−1 theo thời gian (xem [NineBallLogEntry]). Giữ trong
+  /// snapshot + persist để undo / kill app vẫn còn lịch sử minh bạch.
+  final List<NineBallLogEntry> log;
 
   bool get canUndo => history.isNotEmpty;
 
@@ -147,6 +198,7 @@ class NineBallState {
       shotClockSeconds: shotClockSeconds,
       id: id,
       startedAt: startedAt,
+      log: log,
     );
   }
 
@@ -165,6 +217,7 @@ class NineBallState {
     'shotClockSeconds': shotClockSeconds,
     'id': id,
     if (startedAt != null) 'startedAt': startedAt!.toIso8601String(),
+    'log': log.map((e) => e.toJson()).toList(),
   };
 
   factory NineBallState.fromJson(Map<String, dynamic> json) => NineBallState(
@@ -185,6 +238,11 @@ class NineBallState {
     startedAt: json['startedAt'] != null
         ? DateTime.tryParse(json['startedAt'] as String)
         : null,
+    log:
+        (json['log'] as List<dynamic>?)
+            ?.map((e) => NineBallLogEntry.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [],
   );
 
   NineBallState copyWith({
@@ -200,6 +258,7 @@ class NineBallState {
     int? shotClockSeconds,
     String? id,
     DateTime? startedAt,
+    List<NineBallLogEntry>? log,
   }) {
     return NineBallState(
       players: players ?? this.players,
@@ -214,6 +273,7 @@ class NineBallState {
       shotClockSeconds: shotClockSeconds ?? this.shotClockSeconds,
       id: id ?? this.id,
       startedAt: startedAt ?? this.startedAt,
+      log: log ?? this.log,
     );
   }
 }

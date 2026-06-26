@@ -81,6 +81,15 @@ class NineBallEngine {
         state.players[winnerIndex].name,
       ],
       history: _recordHistory(state),
+      log: [
+        ...state.log,
+        NineBallLogEntry(
+          at: DateTime.now(),
+          playerName: state.players[winnerIndex].name,
+          delta: 1,
+          winsAfter: newWins,
+        ),
+      ],
     );
 
     // Kiểm tra đã đạt race target chưa
@@ -123,6 +132,15 @@ class NineBallEngine {
       status: status,
       rackWinnerNames: newWinnerNames,
       history: _recordHistory(state),
+      log: [
+        ...state.log,
+        NineBallLogEntry(
+          at: DateTime.now(),
+          playerName: state.players[playerIndex].name,
+          delta: -1,
+          winsAfter: newWins,
+        ),
+      ],
     );
   }
 

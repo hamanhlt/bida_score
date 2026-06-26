@@ -160,6 +160,7 @@ class NineBallController extends Notifier<NineBallState> {
           MatchPlayerResult(name: p.name, score: p.score),
       ],
       rackWinners: state.rackWinnerNames,
+      poolLog: state.log,
     );
     ref.read(matchHistoryControllerProvider.notifier).addResult(result);
   }

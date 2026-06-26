@@ -60,6 +60,12 @@ lib/
   → `MatchResult.modeLabel` khi kết thúc. Race-to nhập tuỳ ý 1–999 (dialog
   "Khác…"). Identifiers vẫn tên `NineBall*` vì Pool dùng race-to-X engine
   (đổi tên là refactor riêng nếu muốn).
+  **Log thao tác**: game screen có nút Lịch sử (AppBar) → `showNineBallLogSheet`
+  bottom sheet liệt kê từng lượt +1/−1 kèm giờ + tỷ số chạy + tên (màu theo
+  bên). Engine `winRack` append `NineBallLogEntry(delta:+1)`, `decrementWin`
+  append `delta:−1`; log nằm trong `NineBallState.log` (giữ qua undo snapshot +
+  persist JSON) → minh bạch khi sửa nhầm (vd bấm nhầm bên thắng → −1 bên đó,
+  +1 bên kia) để khỏi cãi nhau.
   **Đồng hồ giây (shot clock)**: Setup có card "Đồng hồ giây" với chip
   Tắt(0)/30/45/60 + "Khác…" (custom 5–300s qua `_ShotClockInputDialog`),
   default 30s. Lưu vào `NineBallState.shotClockSeconds` (0 = tắt) — config
@@ -233,8 +239,10 @@ Mỗi service 1 storage key với version suffix (vd `match_history_v1`):
   `modeLabel` = biến thể đã chọn ở Setup. Chơi điểm ghi `score` là tiền còn
   lại sau đối trừ và UI lịch sử format tiền bằng `formatVnd`.
   Tap trận → `MatchDetailScreen`: `MatchResult.events` (Bắn đền) → cây ván/lượt
-  (`RoundHistoryView`); `MatchResult.rackWinners` (Pool) → play-by-play từng
-  rack + tỉ số chạy (`_RackPlayByPlay`). 1 trong 2 list được điền, cái kia rỗng.
+  (`RoundHistoryView`); `MatchResult.poolLog` (Pool) → log thao tác +1/−1 kèm
+  thời gian (`NineBallLogList`, dùng chung với bottom sheet trong trận) — fallback
+  `MatchResult.rackWinners` → play-by-play từng rack (`_RackPlayByPlay`) cho trận
+  Pool cũ chưa có log. `_recordHistoryIfFinished` truyền cả `poolLog` + `rackWinners`.
   Tab Lịch sử filter: Bắn đền (`modeLabel == 'Bắn đền'`), Chơi điểm
   (`modeLabel == 'Chơi điểm'`), Pool (mọi cái khác — gồm cả legacy
   "8/9/10-Ball" cho backward-compat).

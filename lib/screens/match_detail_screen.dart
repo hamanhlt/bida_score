@@ -4,6 +4,7 @@ import '../models/cash_game_state.dart';
 import '../models/game_mode.dart';
 import '../models/match_result.dart';
 import '../theme/app_colors.dart';
+import '../widgets/nine_ball_log_sheet.dart';
 import '../widgets/round_history_view.dart';
 import '../widgets/table_background.dart';
 
@@ -77,20 +78,26 @@ class MatchDetailScreen extends StatelessWidget {
               Expanded(
                 child: switch ((
                   match.events.isNotEmpty,
+                  match.poolLog.isNotEmpty,
                   match.rackWinners.isNotEmpty,
                 )) {
                   // Bắn đền — cây ván/lượt.
-                  (true, _) => RoundHistoryView(
+                  (true, _, _) => RoundHistoryView(
                     events: match.events,
                     totalRounds: match.roundsPlayed,
                   ),
-                  // race-to-X — play-by-play từng rack.
-                  (false, true) => _RackPlayByPlay(
+                  // Pool — log thao tác +1/−1 kèm thời gian (như trong trận).
+                  (false, true, _) => NineBallLogList(
+                    playerNames: [for (final p in match.players) p.name],
+                    log: match.poolLog,
+                  ),
+                  // Pool cũ (chưa có log) — play-by-play từng rack.
+                  (false, false, true) => _RackPlayByPlay(
                     rackWinners: match.rackWinners,
                     playerNames: [for (final p in match.players) p.name],
                   ),
                   // Trận cũ không lưu chi tiết.
-                  (false, false) => Center(
+                  (false, false, false) => Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32),
                       child: Text(
