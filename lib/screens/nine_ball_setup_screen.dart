@@ -381,7 +381,7 @@ class _NineBallSetupScreenState extends ConsumerState<NineBallSetupScreen> {
   }
 }
 
-/// Dialog nhập race-to tuỳ ý (1–99). Tách ra StatefulWidget riêng để
+/// Dialog nhập race-to tuỳ ý (1–999). Tách ra StatefulWidget riêng để
 /// `TextEditingController` được dispose đúng lifecycle qua `State.dispose`,
 /// tránh assertion `_dependents.isEmpty` khi TextField rebuild sau pop.
 class _RaceInputDialog extends StatefulWidget {
@@ -411,14 +411,14 @@ class _RaceInputDialogState extends State<_RaceInputDialog> {
 
   int? _tryParse() {
     final n = int.tryParse(_controller.text.trim());
-    if (n == null || n < 1 || n > 99) return null;
+    if (n == null || n < 1 || n > 999) return null;
     return n;
   }
 
   void _confirm() {
     final n = _tryParse();
     if (n == null) {
-      setState(() => _error = 'Nhập số nguyên 1–99.');
+      setState(() => _error = 'Nhập số nguyên 1–999.');
       return;
     }
     Navigator.of(context).pop(n);

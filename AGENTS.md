@@ -81,7 +81,7 @@ lib/
   tiền còn lại sau đối trừ} vào match history. Result screen hiện người thắng
   + chênh lệch (moneyDifference) phải trả và "Các ván đã chốt". `formatVnd`
   format "360.000"; lịch sử Chơi điểm cũng dùng format này thay vì số thô.
-  KHÔNG persist state đang chơi qua kill (giống Pool).
+  KHÔNG persist state đang chơi qua kill (khác Pool — Pool nay persist được).
 - `league` → LeagueListScreen (landing) → LeagueSetupScreen /
   LeaguePlayScreen / LeagueResultScreen của 1 giải cụ thể. Hỗ trợ
   **nhiều giải song song**: mỗi giải có `id` riêng (sinh ở engine), lưu
@@ -192,6 +192,12 @@ tạo state từ seed. Cold start có data ngay, không cần loading screen.
 
 Mỗi service 1 storage key với version suffix (vd `match_history_v1`):
 - `GamePersistence` → state Bắn đền đang chơi (gồm `scoreEvents` per-turn log)
+- `NineBallPersistence` (`active_pool_state_v1`) → state Pool đang chơi
+  (`NineBallState.toJson`, bỏ undo `history`) → chơi dở kill app vẫn vào đánh
+  tiếp. Chỉ lưu khi `status == inProgress`; setup/finished thì xoá. Preload ở
+  `main.dart` qua `initialNineBallStateProvider`; controller `listenSelf`
+  auto-save. Routing pool vẫn dựa trên GameState `{pool, setup}` (đã persist
+  sẵn qua `GamePersistence`) → cold start vào thẳng `NineBallGameScreen`.
 - `SetupPersistence` → setup gần nhất (auto-fill Setup screen)
 - `PlayerNameHistoryStorage` → LRU 50 tên đã nhập (pool dùng chung mọi mode).
   `GameController.startGame` + `NineBallController.startGame` đều `addAll(names)`.

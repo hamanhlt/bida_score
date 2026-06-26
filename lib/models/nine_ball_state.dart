@@ -122,6 +122,37 @@ class NineBallState {
     );
   }
 
+  /// JSON cho persistence (khôi phục trận đang chơi sau khi kill app).
+  /// **Không** lưu `history` (undo stack) — sau restart không cần undo về
+  /// thao tác trước khi tắt.
+  Map<String, dynamic> toJson() => {
+    'players': players.map((p) => p.toJson()).toList(),
+    'rackWins': rackWins,
+    'raceTarget': raceTarget,
+    'breakerIndex': breakerIndex,
+    'currentRack': currentRack,
+    'status': status.name,
+    'rackWinnerNames': rackWinnerNames,
+    if (variantLabel != null) 'variantLabel': variantLabel,
+    'shotClockSeconds': shotClockSeconds,
+  };
+
+  factory NineBallState.fromJson(Map<String, dynamic> json) => NineBallState(
+    players: (json['players'] as List<dynamic>)
+        .map((e) => Player.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    rackWins: (json['rackWins'] as List<dynamic>).cast<int>(),
+    raceTarget: json['raceTarget'] as int,
+    breakerIndex: json['breakerIndex'] as int,
+    currentRack: json['currentRack'] as int,
+    status: NineBallStatus.values.byName(json['status'] as String),
+    rackWinnerNames:
+        (json['rackWinnerNames'] as List<dynamic>?)?.cast<String>() ??
+        const [],
+    variantLabel: json['variantLabel'] as String?,
+    shotClockSeconds: json['shotClockSeconds'] as int? ?? 0,
+  );
+
   NineBallState copyWith({
     List<Player>? players,
     List<int>? rackWins,

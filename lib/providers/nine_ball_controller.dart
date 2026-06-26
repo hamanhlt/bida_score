@@ -5,11 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../logic/nine_ball_engine.dart';
 import '../models/match_result.dart';
 import '../models/nine_ball_state.dart';
+import '../services/nine_ball_persistence.dart';
 import 'game_controller.dart';
 import 'match_history_controller.dart';
 
 final nineBallEngineProvider =
     Provider<NineBallEngine>((ref) => const NineBallEngine());
+
+/// State Pool đang chơi được preload ở `main.dart` từ SharedPreferences.
+/// Null nghĩa là chưa có bản lưu → dùng [NineBallState.initial].
+final initialNineBallStateProvider = Provider<NineBallState?>((_) => null);
 
 final nineBallControllerProvider =
     NotifierProvider<NineBallController, NineBallState>(
@@ -20,7 +25,16 @@ class NineBallController extends Notifier<NineBallState> {
   NineBallEngine get _engine => ref.read(nineBallEngineProvider);
 
   @override
-  NineBallState build() => NineBallState.initial();
+  NineBallState build() {
+    // Auto-save mỗi khi state đổi (fire-and-forget để không block UI).
+    // Persistence tự xoá bản lưu khi status != inProgress.
+    listenSelf((previous, next) {
+      unawaited(NineBallPersistence.save(next));
+    });
+
+    final preloaded = ref.read(initialNineBallStateProvider);
+    return preloaded ?? NineBallState.initial();
+  }
 
   void startGame(
     List<String> names,
