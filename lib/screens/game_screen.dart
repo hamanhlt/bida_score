@@ -81,6 +81,15 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Lịch sử ghi điểm',
+            icon: const Icon(Icons.history_rounded),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const HistoryScreen(),
+              ),
+            ),
+          ),
           if (_pipAvailable)
             IconButton(
               tooltip: 'Cửa sổ nổi (PiP)',
@@ -90,13 +99,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           PopupMenuButton<_GameMenuAction>(
             onSelected: (action) async {
               switch (action) {
-                case _GameMenuAction.history:
-                  await Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const HistoryScreen(),
-                    ),
-                  );
-                  return;
                 case _GameMenuAction.addPlayer:
                   final name = await showDialog<String>(
                     context: context,
@@ -122,10 +124,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
               }
             },
             itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: _GameMenuAction.history,
-                child: Text('Lịch sử'),
-              ),
               PopupMenuItem(
                 value: _GameMenuAction.addPlayer,
                 child: Text('Thêm người chơi'),
@@ -368,7 +366,7 @@ class _AddPlayerDialogState extends State<_AddPlayerDialog> {
   }
 }
 
-enum _GameMenuAction { history, addPlayer, reset }
+enum _GameMenuAction { addPlayer, reset }
 
 enum _TurnStep { pickShooter, pickBalls, pickVictim }
 
