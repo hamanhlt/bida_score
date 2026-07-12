@@ -45,23 +45,27 @@ class LastSetupNotifier extends Notifier<LastSetup?> {
     unawaited(SetupPersistence.save(setup));
   }
 
-  /// Update Bắn đền setup (names + ballConfigs) — preserve variantLabel.
+  /// Update Bắn đền setup (names + ballConfigs) — preserve variantLabel +
+  /// shotClockSeconds.
   void setPenalty(List<String> names, List<BallConfig> configs) {
     final next = LastSetup(
       playerNames: names,
       ballConfigs: configs,
       variantLabel: state?.variantLabel,
+      shotClockSeconds: state?.shotClockSeconds ?? 0,
     );
     state = next;
     unawaited(SetupPersistence.save(next));
   }
 
-  /// Update Pool variant label — preserve Bắn đền names + ballConfigs.
-  void setVariant(String variantLabel) {
+  /// Update Pool config (variant + shot clock) — preserve Bắn đền names +
+  /// ballConfigs.
+  void setPoolConfig(String variantLabel, int shotClockSeconds) {
     final next = LastSetup(
       playerNames: state?.playerNames ?? const [],
       ballConfigs: state?.ballConfigs ?? const [],
       variantLabel: variantLabel,
+      shotClockSeconds: shotClockSeconds,
     );
     state = next;
     unawaited(SetupPersistence.save(next));

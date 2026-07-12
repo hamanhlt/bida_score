@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../models/nine_ball_state.dart';
 import '../models/player.dart';
 
@@ -8,6 +10,7 @@ class NineBallEngine {
     List<String> rawNames,
     int raceTarget, {
     String? variantLabel,
+    int shotClockSeconds = 0,
   }) {
     final names = rawNames
         .map((name) => name.trim())
@@ -32,6 +35,7 @@ class NineBallEngine {
         ),
     ];
 
+    final startedAt = DateTime.now();
     return NineBallState(
       players: players,
       rackWins: List.filled(players.length, 0),
@@ -40,7 +44,18 @@ class NineBallEngine {
       currentRack: 1,
       status: NineBallStatus.inProgress,
       variantLabel: variantLabel,
+      shotClockSeconds: shotClockSeconds,
+      id: _generatePoolId(startedAt),
+      startedAt: startedAt,
     );
+  }
+
+  /// Id duy nhất cho 1 trận Pool — timestamp base36 + suffix random để 2 trận
+  /// tạo cùng micro giây vẫn khác id (mirror cách League sinh id).
+  String _generatePoolId(DateTime at) {
+    final ts = at.microsecondsSinceEpoch.toRadixString(36);
+    final rand = Random().nextInt(0xFFFFFF).toRadixString(16).padLeft(6, '0');
+    return 'pool_${ts}_$rand';
   }
 
   /// Ghi nhận người thắng rack. Winner breaks rack tiếp.
@@ -66,6 +81,15 @@ class NineBallEngine {
         state.players[winnerIndex].name,
       ],
       history: _recordHistory(state),
+      log: [
+        ...state.log,
+        NineBallLogEntry(
+          at: DateTime.now(),
+          playerName: state.players[winnerIndex].name,
+          delta: 1,
+          winsAfter: newWins,
+        ),
+      ],
     );
 
     // Kiểm tra đã đạt race target chưa
@@ -108,6 +132,15 @@ class NineBallEngine {
       status: status,
       rackWinnerNames: newWinnerNames,
       history: _recordHistory(state),
+      log: [
+        ...state.log,
+        NineBallLogEntry(
+          at: DateTime.now(),
+          playerName: state.players[playerIndex].name,
+          delta: -1,
+          winsAfter: newWins,
+        ),
+      ],
     );
   }
 

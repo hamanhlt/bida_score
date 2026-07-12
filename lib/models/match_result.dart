@@ -1,3 +1,4 @@
+import 'nine_ball_state.dart';
 import 'score_event.dart';
 
 /// Kết quả cuối cùng của 1 trận đấu — lưu vào lịch sử khi user bấm
@@ -8,6 +9,10 @@ import 'score_event.dart';
 /// - [rackWinners]: race-to-X (9/8/10-Ball) — tên người thắng từng rack
 ///   theo thứ tự → MatchDetailScreen hiện play-by-play.
 /// Cả hai rỗng = trận cũ lưu trước khi thêm field.
+///
+/// [poolLog]: race-to-X — log thao tác +1/−1 kèm thời gian (xem
+/// [NineBallLogEntry]). Có từ phiên sau khi thêm log; trận Pool cũ rỗng → màn
+/// chi tiết fallback về [rackWinners].
 class MatchResult {
   const MatchResult({
     required this.finishedAt,
@@ -16,6 +21,7 @@ class MatchResult {
     required this.players,
     this.events = const [],
     this.rackWinners = const [],
+    this.poolLog = const [],
   });
 
   final DateTime finishedAt;
@@ -24,6 +30,7 @@ class MatchResult {
   final List<MatchPlayerResult> players;
   final List<ScoreEvent> events;
   final List<String> rackWinners;
+  final List<NineBallLogEntry> poolLog;
 
   Map<String, dynamic> toJson() => {
     'finishedAt': finishedAt.toIso8601String(),
@@ -32,6 +39,7 @@ class MatchResult {
     'players': players.map((p) => p.toJson()).toList(),
     'events': events.map((e) => e.toJson()).toList(),
     'rackWinners': rackWinners,
+    'poolLog': poolLog.map((e) => e.toJson()).toList(),
   };
 
   factory MatchResult.fromJson(Map<String, dynamic> json) => MatchResult(
@@ -46,6 +54,9 @@ class MatchResult {
         .toList(),
     rackWinners:
         (json['rackWinners'] as List<dynamic>? ?? const []).cast<String>(),
+    poolLog: (json['poolLog'] as List<dynamic>? ?? const [])
+        .map((e) => NineBallLogEntry.fromJson(e as Map<String, dynamic>))
+        .toList(),
   );
 }
 

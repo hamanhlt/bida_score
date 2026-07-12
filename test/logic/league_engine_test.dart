@@ -1025,13 +1025,54 @@ void main() {
       final local = LeagueEngine(rng: Random(1));
       expect(() => local.startDoubleElim(['A', 'B', 'C']), throwsArgumentError);
       expect(
-        () => local.startDoubleElim(['A', 'B', 'C', 'D']),
-        throwsArgumentError,
-      );
-      expect(
         () => local.startDoubleElim(['A', 'B', 'C', 'D', 'E', 'F']),
         throwsArgumentError,
       );
+    });
+
+    test('startDoubleElim N=4: tổng 6 trận (3 WB + 2 LB + 1 GF)', () {
+      final local = LeagueEngine(rng: Random(1));
+      final state = local.startDoubleElim(['A', 'B', 'C', 'D']);
+      expect(state.usesDoubleElim, isTrue);
+      expect(state.fixtures, hasLength(6));
+      expect(state.winnersFixtures, hasLength(3)); // 2 + 1
+      expect(state.losersFixtures, hasLength(2)); // 1 + 1
+      expect(state.grandFinalFixture, isNotNull);
+
+      // WB R1: 2 trận có người sẵn.
+      final wbR1 = state.winnersFixtures
+          .where((f) => f.roundIndex == 1)
+          .toList();
+      expect(wbR1, hasLength(2));
+      for (final f in wbR1) {
+        expect(f.isReady, isTrue);
+      }
+      // LB R1 nhận thua WB R1; LB R2 nhận thua WB final.
+      final lbR1 = state.losersFixtures.singleWhere((f) => f.roundIndex == 1);
+      expect(lbR1.sourceLoserOfP1Id, 'wb_r1_m1');
+      expect(lbR1.sourceLoserOfP2Id, 'wb_r1_m2');
+      final lbR2 = state.losersFixtures.singleWhere((f) => f.roundIndex == 2);
+      expect(lbR2.sourceWinnerOfP1Id, 'lb_r1_m1');
+      expect(lbR2.sourceLoserOfP2Id, 'wb_r2_m1');
+    });
+
+    test('chơi xong toàn bộ bracket N=4 → champion = GF winner', () {
+      final local = LeagueEngine(rng: Random(3));
+      var state = local.startDoubleElim(['A', 'B', 'C', 'D']);
+      var guard = 0;
+      while (!state.doubleElimComplete && guard < 50) {
+        guard++;
+        final ready = state.fixtures.firstWhere(
+          (f) => f.isReady && !f.isPlayed,
+          orElse: () => throw StateError('Không còn trận ready để đá.'),
+        );
+        state = local.updateScore(state, ready.id, 5, 1);
+      }
+      expect(state.doubleElimComplete, isTrue);
+      expect(state.championId, isNotNull);
+      expect(state.runnerUpId, isNotNull);
+      state = local.finishTournament(state);
+      expect(state.status, LeagueStatus.finished);
     });
 
     test('startDoubleElim N=8: tổng 13 trận (7 WB + 5 LB + 1 GF)', () {

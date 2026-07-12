@@ -1,7 +1,8 @@
 # Bida Score — Project Notes
 
-Flutter app ghi điểm bi-a (Vietnamese billiards). 3 modes: Bắn đền (penalty369),
-Pool (race-to-X, biến thể 8/9/10-Ball/tuỳ ý chọn ở Setup), và Giải đấu (league —
+Flutter app ghi điểm bi-a (Vietnamese billiards). 4 modes: Bắn đền (penalty369),
+Pool (race-to-X, biến thể 8/9/10-Ball/tuỳ ý chọn ở Setup), Chơi điểm (cashGame —
+2 người, tính tiền theo ván thắng + lỗ 10, chốt hiệu số), và Giải đấu (league —
 3 thể thức: vòng tròn / vòng bảng manual + knockout / đấu nhánh kép).
 Target: Android (chính), iOS, Web (PWA via Docker).
 
@@ -9,7 +10,7 @@ Target: Android (chính), iOS, Web (PWA via Docker).
 
 ```
 flutter analyze        # phải sạch trước khi commit
-flutter test           # 108 tests (app_flow + engine + providers + widgets)
+flutter test           # 132 tests (app_flow + engine + providers + widgets)
 flutter run            # debug build (chọn device)
 flutter build web --release
 ```
@@ -29,6 +30,7 @@ lib/
 ├── logic/              # Engine pure functions (không Riverpod, không I/O)
 │   ├── game_engine.dart       # Bắn đền
 │   ├── nine_ball_engine.dart  # race-to-X (Pool, dùng cho mọi biến thể)
+│   ├── cash_game_engine.dart  # Chơi điểm
 │   └── league_engine.dart     # Giải đấu (vòng tròn / bảng / double-elim)
 ├── providers/          # Riverpod NotifierProvider — wrap engine + ref disk
 ├── models/             # Plain data + JSON serialization
@@ -40,10 +42,67 @@ lib/
 
 **Routing**: `_AppShell` ở [app.dart](lib/app.dart) chọn shell theo `gameState.gameMode`:
 - `penalty369` → SetupScreen / GameScreen / ResultScreen
-- `pool` → NineBallSetupScreen / NineBallGameScreen / NineBallResultScreen.
+- `pool` → NineBallListScreen (landing) → NineBallSetupScreen /
+  NineBallGameScreen / NineBallResultScreen. Hỗ trợ **nhiều trận song song**
+  giống League: mỗi trận có `id` riêng (sinh ở engine `startGame`), lưu vào
+  list `active_pools_v1` qua `ActivePoolsController` (listenSelf auto-persist);
+  switch giữa các trận không mất tỷ số. Routing: `_buildNineBallShell` xem
+  `poolSessionControllerProvider.viewMode` — `list` → NineBallListScreen,
+  `current` → route theo `NineBallState.status` (setup/inProgress/finished).
+  Session (`pool_session_v1`) lưu {viewMode, currentId} → cold start mở lại
+  đúng màn. Tap trận → `openMatch`; nút "Tạo trận mới" → `createNew`; back ở
+  game screen → `backToList` (giữ trận); "Huỷ trận" → `cancelMatch` (xoá khỏi
+  list, không ghi lịch sử); đạt race target / "Kết thúc trận" → finished →
+  remove khỏi list + ghi `MatchHistory`. `NineBallController` mirror
+  `LeagueController` (sync active list qua listenSelf, restore từ
+  session.currentId, defer `goToList` nếu id stale).
   Setup có chip "Biến thể" (8/9/10-Ball/Khác) → lưu vào `NineBallState.variantLabel`
-  → `MatchResult.modeLabel` khi kết thúc. Identifiers vẫn tên `NineBall*` vì
-  Pool dùng race-to-X engine (đổi tên là refactor riêng nếu muốn).
+  → `MatchResult.modeLabel` khi kết thúc. Race-to nhập tuỳ ý 1–999 (dialog
+  "Khác…"). Identifiers vẫn tên `NineBall*` vì Pool dùng race-to-X engine
+  (đổi tên là refactor riêng nếu muốn).
+  **Log thao tác**: game screen có nút Lịch sử (AppBar) → `showNineBallLogSheet`
+  bottom sheet liệt kê từng lượt +1/−1 kèm giờ + tỷ số chạy + tên (màu theo
+  bên). Engine `winRack` append `NineBallLogEntry(delta:+1)`, `decrementWin`
+  append `delta:−1`; log nằm trong `NineBallState.log` (giữ qua undo snapshot +
+  persist JSON) → minh bạch khi sửa nhầm (vd bấm nhầm bên thắng → −1 bên đó,
+  +1 bên kia) để khỏi cãi nhau.
+  **Đồng hồ giây (shot clock)**: Setup có card "Đồng hồ giây" với chip
+  Tắt(0)/30/45/60 + "Khác…" (custom 5–300s qua `_ShotClockInputDialog`),
+  default 30s. Lưu vào `NineBallState.shotClockSeconds` (0 = tắt) — config
+  hằng số/trận, persist qua `LastSetup.shotClockSeconds`
+  (`setPoolConfig(variantLabel, shotClockSeconds)`) để Setup auto-fill lần
+  sau. Game screen render `ShotClockBar` ở đáy KHI `shotClockSeconds > 0`:
+  thanh ngang đếm ngược dùng `AnimationController` (duration = số giây),
+  màu xanh lá (`>0.5`) → vàng (`>0.25`) → đỏ; nút "Chạy" `forward(from:0)`,
+  đang chạy đổi thành "Đặt lại" (`reset`). Vào vùng đỏ (`remaining ≤ 0.25` &
+  đang chạy) → hiệu ứng **rực lửa**: `_flameController` thứ 2 (420ms,
+  `repeat(reverse)`, chỉ chạy trong vùng đỏ để khỏi tốn frame) lerp gradient
+  lửa (đỏ thẫm→cam→vàng ở mép) + glow cam (`BoxShadow` nhấp nháy) + số giây
+  nhấp nháy đỏ↔cam kèm `Shadow`. Hết giờ (`AnimationStatus.completed`)
+  → chuông báo lặp `Timer.periodic(700ms)` gọi `SystemSound.play(alert)` +
+  `HapticFeedback.heavyImpact()` (KHÔNG dùng package audio) + popup
+  AlertDialog "Hết giờ!"; chạm "Đánh tiếp" mới cancel chuông + reset thanh
+  cho chạy lại. Ticking sống trong StatefulWidget local — KHÔNG đẩy vào
+  Riverpod (tránh spam `listenSelf` persist).
+- `cashGame` (Chơi điểm) → CashGameSetupScreen / CashGameScreen /
+  CashGameResultScreen. 2 người, tính tiền theo ván thắng + lỗ 10:
+  tap panel người = +1 ván thắng cộng dồn toàn trận (+`moneyPerRack`);
+  nút +/- "Lỗ 10" nhập lỗ 10 của ván hiện tại (+/- `moneyPerBall`).
+  Bấm "Chốt" khi có lỗ 10, khi ván thắng đổi so với lần chốt trước, hoặc
+  khi còn hiệu số để đối trừ. Chốt sẽ lưu 1 `CashGameRackResult` (kể cả
+  ván 0 lỗ 10 nếu điểm số đổi), reset `balls`, cập nhật `settledRackWins`,
+  rồi trừ phần tiền chung của 2 bên bằng `settledOffsets` để màn chơi chỉ
+  còn hiệu số (vd 120.000 vs 140.000 → 0 vs 20.000). `moneyOf(i)` trả tiền
+  sau đối trừ; `grossMoneyOf(i)` là tổng thô trước đối trừ. Setup cấu hình
+  mức tiền (default 40k/ván, 20k/lỗ 10) — lưu `cash_config_v1` để auto-fill.
+  Có undo (snapshot stack). Landscape dùng layout riêng cho dễ nhìn: panel
+  người chơi ngang lớn + cụm Lỗ 10/control bên cạnh. Kết thúc thủ công tự
+  chốt phần chưa chốt nếu cần → MatchResult{modeLabel: 'Chơi điểm', score =
+  tiền còn lại sau đối trừ} vào match history. Result screen hiện người thắng
+  + chênh lệch (moneyDifference) phải trả và "Các ván đã chốt". `formatVnd`
+  format "360.000"; lịch sử Chơi điểm cũng dùng format này thay vì số thô.
+  KHÔNG persist state đang chơi qua kill (khác Pool — Pool nay persist nhiều
+  trận song song).
 - `league` → LeagueListScreen (landing) → LeagueSetupScreen /
   LeaguePlayScreen / LeagueResultScreen của 1 giải cụ thể. Hỗ trợ
   **nhiều giải song song**: mỗi giải có `id` riêng (sinh ở engine), lưu
@@ -56,13 +115,26 @@ lib/
      (single-elim + tranh 3-4). Engine xử lý seeding + knockout
      advancement; trận tranh 3-4 sinh tự động khi bán kết kết thúc
      (roundName `Tranh 3-4`, cùng roundIndex với chung kết).
-  3. **Đấu nhánh kép (double-elim hybrid)**: N ∈ {8, 16, 32}. Setup nhập
+     Setup có 2 cách nhập: **Nhập tay** hoặc **Bốc thăm**. Bốc thăm cho
+     chọn số bảng + số người tối đa/bảng + tổng số người thực tế (cho phép
+     bảng thiếu người, miễn mỗi bảng tối thiểu 2 người), nhập 1 hạt giống
+     mỗi bảng và danh sách còn lại; bốc thăm INLINE bằng lưới
+     `_InlineDrawWheelCard` (1 [`DrawWheel`](lib/widgets/draw_wheel.dart)/bảng).
+     Bấm "Quay lượt X/Y": **mọi bảng còn slot quay ĐỒNG THỜI** thêm 1 người
+     (`_spinGroupRound` → `_planGroupRound` chọn distinct mỗi bảng 1 người;
+     đếm `_groupSpinFinished == _groupSpinExpected` rồi `_commitGroupRound`),
+     người đã bốc **biến mất** khỏi mọi vòng (wheel co dần); bảng đủ người
+     hiện badge ✓. Lượt 2 quay tiếp thêm 1 người/bảng... Khi quay đủ, setup tạo
+     `manualGroups` rồi gọi engine như luồng nhập tay. Các
+     heading cấu hình/bốc thăm (`Số bảng`, `Tối đa mỗi bảng`, `Tổng số người`,
+     `Hạt giống`, `Danh sách bốc thăm`) dùng badge màu để nổi trên nền sáng.
+  3. **Đấu nhánh kép (double-elim hybrid)**: N ∈ {4, 8, 16, 32}. Setup nhập
      thủ công từng cặp đấu lượt 1 (không random). Engine sinh trước TOÀN BỘ
      bracket (nhánh thắng + nhánh thua + GF) với placeholder slot — fill dần
      qua source linkage (`sourceWinnerOfP*Id`, `sourceLoserOfP*Id`).
      Luật hybrid: chỉ loser của WB lượt 1-2 xuống LB; từ WB lượt 3 trở đi
      ai thua bị loại luôn. LB sau khi nhận loser WB R2 chạy single-elim để
-     lấy người vào GF. Tổng trận: 8 người = 13, 16 người = 27, 32 người = 55.
+     lấy người vào GF. Tổng trận (7N/4−1): 4 người = 6, 8 = 13, 16 = 27, 32 = 55.
      Mỗi `updateScore` cascade fill lại dependent fixtures; nếu sửa winner/
      loser thì invalidate descendants để GF không giữ slot cũ. `clearScore`
      đệ quy invalidate descendants.
@@ -86,6 +158,16 @@ lib/
      `fixture.score1 – fixture.score2` thô — tránh user đọc nhầm theo thứ
      tự p1/p2 fixture order (vd LB winner đánh bại WB winner trong GF: pill
      phải hiện "2 – 1" champion first, không phải "1 – 2" theo p1/p2).
+     Setup cũng có 2 cách nhập: **Nhập cặp** hoặc **Bốc thăm**. Bốc thăm
+     nhập 1 hạt giống cho mỗi cặp mở màn và danh sách đối thủ còn lại; bấm
+     bốc thăm INLINE cùng lưới `_InlineDrawWheelCard` (1 wheel/cặp); bấm
+     "Quay bốc đối thủ" → mọi cặp trống bốc ĐỒNG THỜI 1 lượt
+     (`_spinDeRound`/`_planDeRound`/`_commitDeRound`), người bốc xong biến
+     mất khỏi mọi vòng; heading trong phần bốc thăm dùng badge màu giống Đấu
+     bảng. Kết quả trả về list theo thứ tự
+     `[seed1, opponent1, seed2, opponent2, ...]` rồi gọi `startDoubleElim`.
+     Vòng quay (`DrawWheel`) chia múi pastel + emoji con vật random gán theo
+     tên (ổn định khi vòng co lại), nhãn counter-rotate luôn thẳng đứng.
   Tap 1 fixture → bottom sheet nhập tỷ số → `LeagueController.updateScore` →
   engine recalculate leaderboard hoặc cascade bracket → listenSelf upsert
   vào active list.
@@ -131,6 +213,15 @@ tạo state từ seed. Cold start có data ngay, không cần loading screen.
 
 Mỗi service 1 storage key với version suffix (vd `match_history_v1`):
 - `GamePersistence` → state Bắn đền đang chơi (gồm `scoreEvents` per-turn log)
+- Pool trio (mirror League trio):
+  - `ActivePoolsStorage` (`active_pools_v1`) → list trận Pool đang chơi
+    (`NineBallState.toJson`, bỏ undo `history`). Per-entry try/catch. Migrate
+    1 lần từ key cũ `active_pool_state_v1` (single-state, phiên trước).
+  - `PoolSessionStorage` (`pool_session_v1`) → `{viewMode, currentId}` để mở
+    app lại đúng màn (list / trận hiện tại).
+  - Preload ở `main.dart` qua `activePoolsSeedProvider` + `poolSessionSeedProvider`.
+    Routing pool vẫn cần GameState `{pool, setup}` (persist qua `GamePersistence`)
+    để `_AppShell` vào nhánh pool; session quyết định list vs trận.
 - `SetupPersistence` → setup gần nhất (auto-fill Setup screen)
 - `PlayerNameHistoryStorage` → LRU 50 tên đã nhập (pool dùng chung mọi mode).
   `GameController.startGame` + `NineBallController.startGame` đều `addAll(names)`.
@@ -143,19 +234,26 @@ Mỗi service 1 storage key với version suffix (vd `match_history_v1`):
   riêng — popup distinct values từ history pair (chọn số riêng / điểm riêng,
   không cụm). `LinkedHashSet.toList()` giữ thứ tự mới-nhất-trước.
 - `MatchHistoryController` → list trận đã kết thúc (Dismissible swipe-to-delete).
-  Cả Bắn đền lẫn Pool đều ghi vào đây (Pool ghi khi đạt race target trong
+  Bắn đền / Pool / Chơi điểm đều ghi vào đây. Pool ghi khi đạt race target trong
   `winRack` hoặc bấm "Kết thúc trận" — xem `NineBallController._recordHistoryIfFinished`,
-  `modeLabel` = biến thể đã chọn ở Setup).
+  `modeLabel` = biến thể đã chọn ở Setup. Chơi điểm ghi `score` là tiền còn
+  lại sau đối trừ và UI lịch sử format tiền bằng `formatVnd`.
   Tap trận → `MatchDetailScreen`: `MatchResult.events` (Bắn đền) → cây ván/lượt
-  (`RoundHistoryView`); `MatchResult.rackWinners` (Pool) → play-by-play từng
-  rack + tỉ số chạy (`_RackPlayByPlay`). 1 trong 2 list được điền, cái kia rỗng.
-  Tab Lịch sử filter: Bắn đền (`modeLabel == 'Bắn đền'`) vs Pool (mọi cái khác
-  — gồm cả legacy "8/9/10-Ball" cho backward-compat).
+  (`RoundHistoryView`); `MatchResult.poolLog` (Pool) → log thao tác +1/−1 kèm
+  thời gian (`NineBallLogList`, dùng chung với bottom sheet trong trận) — fallback
+  `MatchResult.rackWinners` → play-by-play từng rack (`_RackPlayByPlay`) cho trận
+  Pool cũ chưa có log. `_recordHistoryIfFinished` truyền cả `poolLog` + `rackWinners`.
+  Tab Lịch sử filter: Bắn đền (`modeLabel == 'Bắn đền'`), Chơi điểm
+  (`modeLabel == 'Chơi điểm'`), Pool (mọi cái khác — gồm cả legacy
+  "8/9/10-Ball" cho backward-compat).
 - `CoverImageStorage` (`cover_image_v1`) → ảnh bìa tuỳ chỉnh (base64 bytes).
   User long-press banner ở Mode Selection → bottom sheet → `image_picker`
   (gallery, maxWidth 1280, quality 80) → `coverImageProvider.set(bytes)`.
   Null → banner mặc định `assets/banner.jpg`. `Image.memory` vs `Image.asset`.
   iOS cần `NSPhotoLibraryUsageDescription` trong Info.plist.
+- `CashConfigStorage` (`cash_config_v1`) → mức tiền Chơi điểm gần nhất
+  ({moneyPerRack, moneyPerBall}, tức tiền/ván + tiền/lỗ 10) để Setup
+  auto-fill. `CashGameController.startGame` gọi `cashConfigProvider.set(...)`.
 - League trio:
   - `ActiveLeaguesStorage` (`active_leagues_v1`) → list giải đang chơi
     (status=inProgress). Per-entry try/catch — 1 entry hỏng không wipe
@@ -244,8 +342,10 @@ fail → `errorBuilder` render bi vẽ → không throw.)
 
 File: [lib/screens/nine_ball_game_screen.dart](lib/screens/nine_ball_game_screen.dart)
 
-Layout dùng `_SideColumn` per side (name + Material panel + −1 button) trong outer
-`Row` với Race chip ở giữa. Để giữ cân bằng:
+Layout dùng `_SideColumn` per side (hàng đầu = nút "−1" + tên căn giữa theo
+cụm, rồi Material panel chiếm phần còn lại) trong outer `Row` với Race chip ở
+giữa. "−1" để cạnh tên (không phải dưới panel) để panel điểm cao/to hơn. Để
+giữ cân bằng:
 - Cả 2 side dùng cùng widget `_SideColumn` → tự động equal width via Row Expanded.
 - Material panel ở Column với `crossAxisAlignment: stretch` → fill width.
 - Outer Row `crossAxisAlignment: stretch` → fill height.

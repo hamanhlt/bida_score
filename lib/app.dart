@@ -2,15 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'models/cash_game_state.dart';
 import 'models/game_mode.dart';
 import 'models/game_snapshot.dart';
 import 'models/league_session.dart';
 import 'models/league_state.dart';
 import 'models/nine_ball_state.dart';
+import 'models/pool_session.dart';
+import 'providers/cash_game_controller.dart';
 import 'providers/game_controller.dart';
 import 'providers/league_controller.dart';
 import 'providers/league_session_controller.dart';
 import 'providers/nine_ball_controller.dart';
+import 'providers/pool_session_controller.dart';
+import 'screens/cash_game_result_screen.dart';
+import 'screens/cash_game_screen.dart';
+import 'screens/cash_game_setup_screen.dart';
 import 'screens/game_screen.dart';
 import 'screens/league_list_screen.dart';
 import 'screens/league_play_screen.dart';
@@ -18,6 +25,7 @@ import 'screens/league_result_screen.dart';
 import 'screens/league_setup_screen.dart';
 import 'screens/mode_selection_screen.dart';
 import 'screens/nine_ball_game_screen.dart';
+import 'screens/nine_ball_list_screen.dart';
 import 'screens/nine_ball_result_screen.dart';
 import 'screens/nine_ball_setup_screen.dart';
 import 'screens/result_screen.dart';
@@ -156,6 +164,10 @@ class _AppShell extends ConsumerWidget {
       return _buildNineBallShell(ref);
     }
 
+    if (mode == GameMode.cashGame) {
+      return _buildCashGameShell(ref);
+    }
+
     if (mode == GameMode.league) {
       return _buildLeagueShell(ref);
     }
@@ -179,6 +191,11 @@ class _AppShell extends ConsumerWidget {
   }
 
   Widget _buildNineBallShell(WidgetRef ref) {
+    // viewMode quyết định màn ngoài cùng (list nhiều trận vs trận hiện tại).
+    final session = ref.watch(poolSessionControllerProvider);
+    if (session.viewMode == PoolViewMode.list) {
+      return const NineBallListScreen(key: ValueKey(PoolViewMode.list));
+    }
     final nbState = ref.watch(nineBallControllerProvider);
 
     return AnimatedSwitcher(
@@ -194,6 +211,26 @@ class _AppShell extends ConsumerWidget {
         ),
         NineBallStatus.finished => const NineBallResultScreen(
           key: ValueKey(NineBallStatus.finished),
+        ),
+      },
+    );
+  }
+
+  Widget _buildCashGameShell(WidgetRef ref) {
+    final state = ref.watch(cashGameControllerProvider);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: switch (state.status) {
+        CashGameStatus.setup => const CashGameSetupScreen(
+          key: ValueKey(CashGameStatus.setup),
+        ),
+        CashGameStatus.inProgress => const CashGameScreen(
+          key: ValueKey(CashGameStatus.inProgress),
+        ),
+        CashGameStatus.finished => const CashGameResultScreen(
+          key: ValueKey(CashGameStatus.finished),
         ),
       },
     );

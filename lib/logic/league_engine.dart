@@ -352,7 +352,7 @@ class LeagueEngine {
 
   // ─────────── Double Elimination ───────────
 
-  static const _doubleElimSizes = [8, 16, 32];
+  static const _doubleElimSizes = [4, 8, 16, 32];
 
   /// Số người chơi hợp lệ cho double-elim (power of 2, tối thiểu 8).
   static List<int> get doubleElimSizes => _doubleElimSizes;
@@ -373,8 +373,7 @@ class LeagueEngine {
 
     if (!_doubleElimSizes.contains(names.length)) {
       throw ArgumentError(
-        'Đấu nhánh cần tối thiểu 8 người và hỗ trợ 8/16/32 người '
-        '(hiện ${names.length}).',
+        'Đấu nhánh hỗ trợ 4/8/16/32 người (hiện ${names.length}).',
       );
     }
     final lower = names.map((n) => n.toLowerCase()).toSet();

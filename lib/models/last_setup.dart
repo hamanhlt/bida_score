@@ -10,16 +10,21 @@ class LastSetup {
     required this.playerNames,
     required this.ballConfigs,
     this.variantLabel,
+    this.shotClockSeconds = 0,
   });
 
   final List<String> playerNames;
   final List<BallConfig> ballConfigs;
   final String? variantLabel;
 
+  /// Đồng hồ giây Pool đã chọn lần trước (0 = tắt) — auto-fill Setup.
+  final int shotClockSeconds;
+
   Map<String, dynamic> toJson() => {
     'playerNames': playerNames,
     'ballConfigs': ballConfigs.map((b) => b.toJson()).toList(),
     if (variantLabel != null) 'variantLabel': variantLabel,
+    'shotClockSeconds': shotClockSeconds,
   };
 
   factory LastSetup.fromJson(Map<String, dynamic> json) => LastSetup(
@@ -28,5 +33,6 @@ class LastSetup {
         .map((e) => BallConfig.fromJson(e as Map<String, dynamic>))
         .toList(),
     variantLabel: json['variantLabel'] as String?,
+    shotClockSeconds: json['shotClockSeconds'] as int? ?? 0,
   );
 }
